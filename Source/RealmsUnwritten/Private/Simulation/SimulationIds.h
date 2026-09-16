@@ -58,19 +58,48 @@ struct FHouseholdIdTag
 	static constexpr const TCHAR* DebugName = TEXT("Household");
 };
 
+struct FSettlementIdTag
+{
+	static constexpr const TCHAR* DebugName = TEXT("Settlement");
+};
+
+struct FPropertyIdTag
+{
+	static constexpr const TCHAR* DebugName = TEXT("Property");
+};
+
 using FPersonId = TSimulationId<FPersonIdTag>;
 using FHouseholdId = TSimulationId<FHouseholdIdTag>;
+using FSettlementId = TSimulationId<FSettlementIdTag>;
+using FPropertyId = TSimulationId<FPropertyIdTag>;
 
-// The two identifier families must never be interchangeable, in either direction, whether
-// implicitly or through explicit construction. These assertions are the contract, so they
-// live with the types rather than only in the tests.
-static_assert(!std::is_same_v<FPersonId, FHouseholdId>,
-	"Person and household identifiers must be distinct types.");
-static_assert(!std::is_convertible_v<FPersonId, FHouseholdId>,
-	"A person identifier must not convert to a household identifier.");
-static_assert(!std::is_convertible_v<FHouseholdId, FPersonId>,
-	"A household identifier must not convert to a person identifier.");
-static_assert(!std::is_constructible_v<FHouseholdId, FPersonId>,
-	"A household identifier must not be constructible from a person identifier.");
-static_assert(!std::is_constructible_v<FPersonId, FHouseholdId>,
-	"A person identifier must not be constructible from a household identifier.");
+namespace SimulationIdContract
+{
+	/** Whether either identifier type could stand in for the other, by any means. */
+	template <typename TLeft, typename TRight>
+	inline constexpr bool bInterchangeable =
+		std::is_same_v<TLeft, TRight> ||
+		std::is_convertible_v<TLeft, TRight> ||
+		std::is_convertible_v<TRight, TLeft> ||
+		std::is_constructible_v<TLeft, TRight> ||
+		std::is_constructible_v<TRight, TLeft>;
+
+	template <typename... TIds>
+	struct TMutuallyDistinct : std::true_type
+	{
+	};
+
+	template <typename THead, typename... TTail>
+	struct TMutuallyDistinct<THead, TTail...>
+		: std::bool_constant<(... && !bInterchangeable<THead, TTail>) && TMutuallyDistinct<TTail...>::value>
+	{
+	};
+}
+
+// No identifier family may ever stand in for another, in either direction, whether
+// implicitly or through explicit construction. One assertion covers every pair, so a future
+// entity family only has to be added to this list. The contract lives with the types rather
+// than only in the tests.
+static_assert(
+	SimulationIdContract::TMutuallyDistinct<FPersonId, FHouseholdId, FSettlementId, FPropertyId>::value,
+	"Simulation identifier families must never be interchangeable with one another.");

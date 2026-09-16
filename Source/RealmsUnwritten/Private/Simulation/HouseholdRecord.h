@@ -22,4 +22,19 @@ struct FHouseholdRecord
 
 	/** Current members. Contains no duplicates and no unresolvable identifiers. */
 	TArray<FPersonId> Members;
+
+	/**
+	 * Settlement this household is currently located in, or an invalid identifier when it
+	 * belongs to none.
+	 *
+	 * Stored explicitly rather than derived from ResidenceId, because a household may be
+	 * located in a settlement while occupying no property at all.
+	 */
+	FSettlementId SettlementId;
+
+	/**
+	 * Property this household occupies as its residence, or an invalid identifier when it
+	 * has none. Occupancy only: this slice models no ownership, tenancy, or rent.
+	 */
+	FPropertyId ResidenceId;
 };

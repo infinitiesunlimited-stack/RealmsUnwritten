@@ -6,7 +6,8 @@
 - **Authority:** Subordinate to `DESIGN_CONSTITUTION.md`, `HIGH_LEVEL_ARCHITECTURE.md`, `DATA_MODEL_OVERVIEW.md`, and `PROTOTYPE_0_1_SCOPE.md`
 - **Scope:** Persistent people and households only
 - **Describes:** Only what exists in the repository today
-- **Revision:** Updated after the independent Prototype 0.1A review
+- **Revision:** Updated after the independent Prototype 0.1A review; factual corrections applied where Prototype 0.1B extended this foundation
+- **Extended by:** `SETTLEMENT_PROPERTY_RESIDENCE.md` (Prototype 0.1B), which adds settlements, properties, and household residence. This document is still the record for people, households, and their membership relationship.
 
 ## Purpose
 
@@ -14,7 +15,7 @@ This is the first production slice of `PROTOTYPE_0_1_SCOPE.md` step 1–2 ("auth
 
 It answers one question: can people and households exist, be found, and be related to each other with no Actor, no map, no tick, and no visual representation?
 
-Nothing else is implemented. There are no settlements, properties, residences, jobs, goods, inventories, calendar, commands, events, or save format yet.
+Nothing else was implemented by this slice. Settlements, properties, and household residence arrived in Prototype 0.1B and are documented in `SETTLEMENT_PROPERTY_RESIDENCE.md`. There are still no jobs, goods, inventories, calendar, commands, events, or save format.
 
 ## Authoritative simulation boundary
 
@@ -60,7 +61,7 @@ using FHouseholdId = TSimulationId<FHouseholdIdTag>;
 
 Properties:
 
-- **Typed.** `FPersonId` and `FHouseholdId` are unrelated types. Five `static_assert`s next to the aliases enforce that they are distinct, non-convertible in either direction, and not even explicitly constructible from one another. The tag also supplies a debug name for `ToString`, which yields `Person#4` / `Household#2` for diagnostics.
+- **Typed.** `FPersonId` and `FHouseholdId` are unrelated types: distinct, non-convertible in either direction, and not even explicitly constructible from one another. One `static_assert` next to the aliases enforces this for every pair of identifier families; 0.1A used five pairwise assertions for the two families, which 0.1B replaced with the equivalent set-wide predicate when two more families arrived (see `SETTLEMENT_PROPERTY_RESIDENCE.md`). The tag also supplies a debug name for `ToString`, which yields `Person#4` / `Household#2` for diagnostics.
 - **Meaningless without the registry.** The raw-value constructor is `explicit` and intentionally available, because validation code and boundary tests need to construct arbitrary values on purpose. Constructing an identifier grants no capability: any value the registry did not allocate fails to resolve, across the entire `uint32` range. Integers never convert to identifiers implicitly.
 - **Explicitly invalid.** Value `0` is the default-constructed state and never resolves to a record. `IsValid()` reports it.
 - **Allocated by the owner.** `FSimulationRegistry` assigns an identifier at creation. Two entities created in the same session cannot share an identifier, identifiers are not reused, and a rejected creation allocates nothing.
@@ -127,8 +128,9 @@ No maximum age rule was invented, `0` is accepted, and `ValidateInvariants` also
 
 - **Birth date** — requires the authoritative calendar, which is a separate system and not part of this slice. `AgeYears` is the declared prototype age basis (see *Known limitations*).
 - **Occupation / job assignment** — needs occupation definitions and the Occupation and Labor system (scope step 4). Adding a bare string or enum now would create an unowned field and a second, definition-less vocabulary.
-- **Origin place, cultural background** — need settlement and culture references that do not exist.
-- **Residence, inventory, possessions, skills, kin links, activity, location** — need property, inventory, knowledge, job, and spatial systems that do not exist.
+- **Origin place, cultural background** — neither field exists on a person record. Settlements exist as of Prototype 0.1B, but nothing records where a person came from, and there is no culture system to reference.
+- **Residence** — a person record has no residence or settlement field, and gained none in 0.1B. Prototype 0.1B provides the property and residence foundation, but it is authoritative on the *household*: a household has an explicit settlement membership and an optional residential property, and a person's place is derived by reading their household's. See `SETTLEMENT_PROPERTY_RESIDENCE.md`.
+- **Inventory, possessions, skills, kin links, activity, location** — need inventory, knowledge, job, and spatial systems that do not exist.
 - **Death date and cause, genetics, disease, personality, religion, ideology, knowledge, marriage, reproduction, inheritance, needs, individual AI, appearance** — out of scope by the assignment and by `PROTOTYPE_0_1_SCOPE.md`.
 
 ## Household representation
@@ -143,13 +145,15 @@ No maximum age rule was invented, `0` is accepted, and `ValidateInvariants` also
 
 Household population is derived by reading `Members`; no population count is stored anywhere, which is what DC-02 requires of settlement population as well.
 
+Prototype 0.1B added two further fields, `SettlementId` and `ResidenceId`, documented in `SETTLEMENT_PROPERTY_RESIDENCE.md`. They are written only by that slice's operations and do not affect anything described here.
+
 ### Fields deliberately not added
 
-Head/representative, origin/founding event, residence and property rights, inventories, wealth, needs, consumption policy, migration status, and household history are all absent. Each needs a system that does not exist yet (property, inventory, market, migration, event history), and every one of them is explicitly deferred by the assignment.
+Head/representative, origin/founding event, property rights, inventories, wealth, needs, consumption policy, migration status, and household history are all absent. Each needs a system that did not exist at 0.1A (property, inventory, market, migration, event history), and every one of them was explicitly deferred by the assignment. Residence was among them and landed in 0.1B; property *rights* remain absent, because occupancy is not ownership.
 
 ## Registry and state ownership
 
-`Private/Simulation/SimulationRegistry.{h,cpp}` defines `FSimulationRegistry`, the sole owner of person and household records.
+`Private/Simulation/SimulationRegistry.{h,cpp}` defines `FSimulationRegistry`, the sole owner of person and household records. Prototype 0.1B extended the same class with settlement and property records, on the identical storage and read model.
 
 ### Storage
 
@@ -271,7 +275,7 @@ UnrealEditor-Cmd.exe "<repo>\RealmsUnwritten.uproject" ^
   -TestExit="Automation Test Queue Empty" -unattended -nopause -nosplash -nullrhi -NoSound
 ```
 
-Result: **9 found, 9 succeeded, 0 failed, 0 with warnings**, total duration 0.140 s.
+Result: **9 found, 9 succeeded, 0 failed, 0 with warnings**, total duration 0.140 s. These nine tests are unchanged by Prototype 0.1B and still pass; the suite as a whole now reports 18 tests, the rest belonging to 0.1B.
 
 ## Known limitations
 
@@ -293,7 +297,7 @@ Nothing outside people, households, and their membership relationship was implem
 - Visual villagers, Actors, Pawns, Characters, components, animation, meshes, UI, and widgets
 - Blueprint exposure of any kind
 - Calendar, simulation clock, scheduling, and headless stepping
-- Settlements, properties, boundaries, roads, residences, and buildings
+- Settlements, properties, boundaries, roads, residences, and buildings — settlements, properties, and residence landed in 0.1B; boundaries, roads, and buildings remain deferred
 - Fields, crops, agriculture, farming, and forestry
 - Resources, lots, inventories, custody, reservations, logistics, and transport
 - Production, milling, baking, market exchange, prices, wealth, and consumption
@@ -319,7 +323,7 @@ Recorded rather than solved, per `AI_DEVELOPMENT_RULES.md`.
 3. **Snapshot cost on wide reads.** Reading every household to build an aggregate copies every member array. Aggregates of that shape belong in a purpose-built read model or a visitor pass, which is exactly what `HIGH_LEVEL_ARCHITECTURE.md` describes; the snapshot API is for resolving individual entities.
 4. **`TArray<FPersonId> Members` per household.** Fine at household sizes, but it is one allocation per household. If household counts grow into the tens of thousands, a shared member pool or chunked storage is the direction.
 5. **Growth reallocation.** Dense arrays reallocate and move all records as the population grows, which costs a copy. Reserving capacity at scenario load, or chunked storage, addresses this when a scenario loader exists. This no longer has correctness implications for callers, only cost.
-6. **Indexes are absent by design.** Lookup by identifier is O(1), but nothing indexes people by household, settlement, age band, or life-state. The first query pattern that would otherwise scan all people (for example "living members of this settlement") should add a targeted, rebuildable index rather than a scan. `DATA_MODEL_OVERVIEW.md` already names the expected index set.
+6. **Indexes are absent by design.** Lookup by identifier is O(1), but nothing indexes people by age band or life-state, and 0.1A added no reverse index beyond a household's member list. The first query pattern that would otherwise scan all people (for example "living members of this settlement") should add a targeted, rebuildable index rather than a scan. `DATA_MODEL_OVERVIEW.md` already names the expected index set; 0.1B added the first two entries of it, settlement-to-property and settlement-to-household.
 7. **Single-threaded and non-reentrant.** The registry assumes one writer. Any future concurrent access is a design decision, not something to bolt on.
 8. **Cold and off-screen storage.** `DATA_MODEL_OVERVIEW.md` allows cold data to be stored differently. Nothing here prevents that, but nothing here implements it either.
 9. **What this slice already avoids.** No Actor, `UObject`, or tick per person; no world scan for lookup; no name-based identity; no dependence on visual representation for existence; no stored population totals; and no public API that can hand out a dangling reference.
