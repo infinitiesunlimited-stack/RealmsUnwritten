@@ -1,0 +1,37 @@
+# Unreal Engine generated directories
+**/Binaries/
+**/DerivedDataCache/
+**/Intermediate/
+**/Saved/
+
+# Generated IDE and project files
+.vs/
+.vscode/
+.idea/
+*.sln
+*.slnx
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.csproj
+*.csproj.user
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.xcodeproj/
+*.xcworkspace/
+*.code-workspace
+*.sln.DotSettings.user
+*.uproject.user
+.vsconfig
+
+# Local Unreal tooling output
+GeneratedProjectFiles/
+LocalBuilds/
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
