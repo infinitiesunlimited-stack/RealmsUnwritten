@@ -3,7 +3,10 @@
 #include "CoreMinimal.h"
 #include "Misc/Optional.h"
 
+#include "Simulation/GoodTypeRecord.h"
+#include "Simulation/GoodsAuditRecord.h"
 #include "Simulation/HouseholdRecord.h"
+#include "Simulation/InventoryRecord.h"
 #include "Simulation/PersonRecord.h"
 #include "Simulation/PropertyRecord.h"
 #include "Simulation/SettlementRecord.h"
@@ -96,7 +99,98 @@ enum class EResidenceResult : uint8
 };
 
 /**
- * Authoritative owner of person, household, settlement, and property records.
+ * Outcome of adding goods to an inventory.
+ *
+ * Adding creates simulation quantity, which is a controlled low-level mutation rather than a
+ * physical process. Production, harvest, and scenario seeding are the future callers; none
+ * of them exists yet (see Docs/Systems/GOODS_INVENTORY.md).
+ */
+enum class EAddGoodsResult : uint8
+{
+	/** The inventory now holds the additional quantity, and one audit record was appended. */
+	Success,
+
+	/** The inventory identifier does not resolve to a record; no state changed. */
+	UnknownInventory,
+
+	/** The good type identifier does not resolve to a record; no state changed. */
+	UnknownGoodType,
+
+	/** The requested quantity was zero or negative; no state changed. */
+	InvalidQuantity,
+
+	/** No reason was supplied, so the creation would have been anonymous; no state changed. */
+	InvalidReason,
+
+	/** The inventory cannot hold that much of the good type without exceeding MaxGoodQuantity. */
+	Overflow
+};
+
+/**
+ * Outcome of removing goods from an inventory.
+ *
+ * Removing destroys simulation quantity, the counterpart to EAddGoodsResult. Consumption,
+ * spoilage, loss, and destruction are the future callers.
+ */
+enum class ERemoveGoodsResult : uint8
+{
+	/** The inventory no longer holds the removed quantity, and one audit record was appended. */
+	Success,
+
+	/** The inventory identifier does not resolve to a record; no state changed. */
+	UnknownInventory,
+
+	/** The good type identifier does not resolve to a record; no state changed. */
+	UnknownGoodType,
+
+	/** The requested quantity was zero or negative; no state changed. */
+	InvalidQuantity,
+
+	/** No reason was supplied, so the destruction would have been anonymous; no state changed. */
+	InvalidReason,
+
+	/** The inventory does not hold that much of the good type; no state changed. */
+	InsufficientQuantity
+};
+
+/**
+ * Outcome of moving goods between two inventories. A successful transfer conserves total
+ * quantity exactly; every failure leaves both inventories untouched.
+ */
+enum class ETransferGoodsResult : uint8
+{
+	/** The quantity moved; the total across both inventories is unchanged. */
+	Success,
+
+	/** The source inventory identifier does not resolve to a record; no state changed. */
+	UnknownSourceInventory,
+
+	/** The destination inventory identifier does not resolve to a record; no state changed. */
+	UnknownDestinationInventory,
+
+	/** The good type identifier does not resolve to a record; no state changed. */
+	UnknownGoodType,
+
+	/** The requested quantity was zero or negative; no state changed. */
+	InvalidQuantity,
+
+	/**
+	 * Source and destination are the same inventory. Rejected rather than treated as a
+	 * no-op, because a transfer to oneself is a caller error rather than a request. No state
+	 * changed.
+	 */
+	SameInventory,
+
+	/** The source does not hold that much of the good type; no state changed. */
+	InsufficientQuantity,
+
+	/** The destination cannot hold that much more without exceeding MaxGoodQuantity. */
+	Overflow
+};
+
+/**
+ * Authoritative owner of person, household, settlement, property, good type, and inventory
+ * records.
  *
  * The registry is plain C++: no UObject, no Actor, no tick, no loaded map, and no
  * Blueprint exposure. Anything that needs a record resolves it by stable identifier
@@ -108,6 +202,16 @@ enum class EResidenceResult : uint8
  * membership, household/settlement location, and household/property residence. Callers
  * therefore cannot edit a record directly, and cannot leave either side of a relationship
  * disagreeing with the other.
+ *
+ * Inventory contents are one-sided rather than a relationship, so they are mutated through
+ * AddGoods, RemoveGoods, and TransferGoods. No caller receives a mutable inventory, so the
+ * rules that quantities stay positive and that a good type appears at most once per
+ * inventory cannot be bypassed.
+ *
+ * Those three operations divide into creation, destruction, and movement. The first two
+ * change how much quantity exists and each leaves an audit record naming the caller's
+ * reason; the third only changes where quantity is, and is audited nowhere because it
+ * conserves the total.
  *
  * Storage is a dense array per entity family, with the identifier value acting as the
  * slot number plus one. Lookup range-checks the unsigned identifier value against the
@@ -143,6 +247,21 @@ public:
 	 */
 	FPropertyId CreateProperty(FSettlementId SettlementId);
 
+	/**
+	 * Creates a good type under a durable authored key and returns its runtime handle.
+	 *
+	 * The authored key is the good type's definition identity and must be supplied by the
+	 * caller: `None` is rejected, and so is a key already in use. The display name is
+	 * display data only, so two good types with different authored keys may share one.
+	 *
+	 * Returns an invalid handle, having changed nothing and consumed no runtime handle, when
+	 * the authored key is None or already taken.
+	 */
+	FGoodTypeId CreateGoodType(FName AuthoredKey, const FString& DisplayName);
+
+	/** Creates an empty inventory, holding no goods. */
+	FInventoryId CreateInventory();
+
 	/** Whether the identifier resolves to a person record. Safe for any identifier value. */
 	bool ContainsPerson(FPersonId PersonId) const;
 
@@ -154,6 +273,12 @@ public:
 
 	/** Whether the identifier resolves to a property record. Safe for any identifier value. */
 	bool ContainsProperty(FPropertyId PropertyId) const;
+
+	/** Whether the identifier resolves to a good type record. Safe for any identifier value. */
+	bool ContainsGoodType(FGoodTypeId GoodTypeId) const;
+
+	/** Whether the identifier resolves to an inventory record. Safe for any identifier value. */
+	bool ContainsInventory(FInventoryId InventoryId) const;
 
 	/**
 	 * Reads a person record, or returns an unset optional for an identifier that does not
@@ -186,6 +311,40 @@ public:
 	 */
 	TOptional<FPropertyRecord> FindProperty(FPropertyId PropertyId) const;
 
+	/**
+	 * Reads a good type record, or returns an unset optional for an identifier that does not
+	 * resolve. The result is a copy with the same contract as FindPerson.
+	 */
+	TOptional<FGoodTypeRecord> FindGoodType(FGoodTypeId GoodTypeId) const;
+
+	/**
+	 * Resolves a durable authored key to the runtime handle it currently maps to, or returns
+	 * an unset optional when no good type carries that key.
+	 *
+	 * This is the bridge between the two identities: content and diagnostics name a good
+	 * type by authored key, while inventory entries store the handle. The display name plays
+	 * no part in resolution.
+	 */
+	TOptional<FGoodTypeId> FindGoodTypeIdByKey(FName AuthoredKey) const;
+
+	/**
+	 * Reads an inventory record, or returns an unset optional for an identifier that does not
+	 * resolve. The result is a copy with the same contract as FindPerson, including a copy of
+	 * the entry list, and is intended for inspection and tests.
+	 *
+	 * Callers that want one quantity should use GetQuantity, which copies nothing.
+	 */
+	TOptional<FInventoryRecord> FindInventory(FInventoryId InventoryId) const;
+
+	/**
+	 * Quantity of one good type held by one inventory.
+	 *
+	 * Returns an unset optional when either identifier does not resolve, and `0` when the
+	 * inventory resolves and simply holds none of that good. The distinction matters: "no
+	 * such inventory" and "none in stock" are different answers.
+	 */
+	TOptional<int32> GetQuantity(FInventoryId InventoryId, FGoodTypeId GoodTypeId) const;
+
 	/** Number of person records held. Derived from storage; not an authoritative population. */
 	int32 GetPersonCount() const { return PersonRecords.Num(); }
 
@@ -197,6 +356,12 @@ public:
 
 	/** Number of property records held. Derived from storage. */
 	int32 GetPropertyCount() const { return PropertyRecords.Num(); }
+
+	/** Number of good type records held. Derived from storage. */
+	int32 GetGoodTypeCount() const { return GoodTypeRecords.Num(); }
+
+	/** Number of inventory records held. Derived from storage. */
+	int32 GetInventoryCount() const { return InventoryRecords.Num(); }
 
 	/**
 	 * Makes the person a member of the household, detaching them from any household they
@@ -242,6 +407,63 @@ public:
 	EResidenceResult RemoveHouseholdResidence(FHouseholdId HouseholdId, FPropertyId PropertyId);
 
 	/**
+	 * Creates a positive quantity of a good type inside an inventory, creating the entry if
+	 * the inventory held none of it.
+	 *
+	 * This is a creation boundary: the quantity did not exist before the call. It is the
+	 * low-level mutation that production, harvest, and scenario seeding will eventually call.
+	 * The caller must say why, and one creation audit record is appended on success.
+	 * Rejected requests leave the inventory untouched and append nothing.
+	 */
+	EAddGoodsResult AddGoods(FInventoryId InventoryId, FGoodTypeId GoodTypeId, int32 Quantity, FName Reason);
+
+	/**
+	 * Destroys a positive quantity of a good type held by an inventory, which must hold at
+	 * least that much. When the remaining quantity reaches zero the entry is removed rather
+	 * than stored as a zero.
+	 *
+	 * This is a destruction boundary and the counterpart to AddGoods: the quantity ceases to
+	 * exist rather than moving elsewhere. The caller must say why, and one destruction audit
+	 * record is appended on success. Rejected requests leave the inventory untouched and
+	 * append nothing.
+	 */
+	ERemoveGoodsResult RemoveGoods(
+		FInventoryId InventoryId, FGoodTypeId GoodTypeId, int32 Quantity, FName Reason);
+
+	/**
+	 * Moves a positive quantity of a good type from one inventory to another, conserving
+	 * total quantity exactly.
+	 *
+	 * Every condition is validated before anything is written, in this order: source
+	 * resolves, destination resolves, good type resolves, quantity is positive, the two
+	 * inventories differ, the source holds enough, and the destination has headroom. Any
+	 * failure leaves *both* inventories exactly as they were. A transfer to the same
+	 * inventory is rejected with SameInventory; it is never a silent no-op.
+	 *
+	 * A transfer creates and destroys nothing, so it takes no reason and appends no audit
+	 * record. It does not route through AddGoods or RemoveGoods: it applies the same
+	 * internal quantity mutations those operations use, so no future creation or destruction
+	 * policy can reject half of an already validated transfer.
+	 */
+	ETransferGoodsResult TransferGoods(
+		FInventoryId SourceInventoryId,
+		FInventoryId DestinationInventoryId,
+		FGoodTypeId GoodTypeId,
+		int32 Quantity);
+
+	/** Number of goods creation and destruction audit records held. */
+	int32 GetGoodsAuditRecordCount() const { return GoodsAuditRecords.Num(); }
+
+	/**
+	 * Reads one audit record by position, oldest first, or returns an unset optional for an
+	 * index outside the recorded range.
+	 *
+	 * Copies, like every other read: no caller receives a reference into audit storage, so
+	 * the record of what was created and destroyed cannot be edited after the fact.
+	 */
+	TOptional<FGoodsAuditRecord> GetGoodsAuditRecord(int32 RecordIndex) const;
+
+	/**
 	 * Checks every stored relationship and reports the first inconsistency found.
 	 * Intended for tests and development diagnostics; it is not part of normal operation.
 	 */
@@ -260,6 +482,10 @@ private:
 
 	const FPropertyRecord* ResolveProperty(FPropertyId PropertyId) const;
 
+	const FGoodTypeRecord* ResolveGoodType(FGoodTypeId GoodTypeId) const;
+
+	const FInventoryRecord* ResolveInventory(FInventoryId InventoryId) const;
+
 	FPersonRecord* ResolvePersonMutable(FPersonId PersonId);
 
 	FHouseholdRecord* ResolveHouseholdMutable(FHouseholdId HouseholdId);
@@ -267,6 +493,8 @@ private:
 	FSettlementRecord* ResolveSettlementMutable(FSettlementId SettlementId);
 
 	FPropertyRecord* ResolvePropertyMutable(FPropertyId PropertyId);
+
+	FInventoryRecord* ResolveInventoryMutable(FInventoryId InventoryId);
 
 	/** The single authoritative person/household membership transition. Both sides or neither. */
 	void SetPersonHousehold(FPersonRecord& PersonRecord, FHouseholdId NewHouseholdId);
@@ -277,6 +505,27 @@ private:
 	/** The single authoritative household/property residence transition. Both sides or neither. */
 	void SetHouseholdResidence(FHouseholdRecord& HouseholdRecord, FPropertyId NewPropertyId);
 
+	/**
+	 * The two authoritative inventory quantity mutations, and the only code that writes an
+	 * entry list.
+	 *
+	 * These are unaudited and deliberately so: they express *movement of quantity into or
+	 * out of one inventory*, which is creation, destruction, or half a transfer depending
+	 * only on who calls them. Their callers decide which it was, and AddGoods and
+	 * RemoveGoods are the only ones that call it creation or destruction.
+	 *
+	 * Both assume every precondition has already been validated, assert as much, and cannot
+	 * fail. Keeping them incapable of failure is what lets TransferGoods apply two of them
+	 * with no possibility of a half transfer.
+	 */
+	void ApplyGoodsAddition(FInventoryRecord& InventoryRecord, FGoodTypeId GoodTypeId, int32 Quantity);
+
+	void ApplyGoodsRemoval(FInventoryRecord& InventoryRecord, FGoodTypeId GoodTypeId, int32 Quantity);
+
+	/** Appends one creation or destruction audit record. Only AddGoods and RemoveGoods call it. */
+	void RecordGoodsAudit(
+		EGoodsAuditAction Action, FInventoryId InventoryId, FGoodTypeId GoodTypeId, int32 Quantity, FName Reason);
+
 	bool ValidatePersonRecords(FString& OutFailureDescription) const;
 
 	bool ValidateHouseholdRecords(FString& OutFailureDescription) const;
@@ -285,6 +534,10 @@ private:
 
 	bool ValidatePropertyRecords(FString& OutFailureDescription) const;
 
+	bool ValidateGoodTypeRecords(FString& OutFailureDescription) const;
+
+	bool ValidateInventoryRecords(FString& OutFailureDescription) const;
+
 	TArray<FPersonRecord> PersonRecords;
 
 	TArray<FHouseholdRecord> HouseholdRecords;
@@ -292,4 +545,24 @@ private:
 	TArray<FSettlementRecord> SettlementRecords;
 
 	TArray<FPropertyRecord> PropertyRecords;
+
+	TArray<FGoodTypeRecord> GoodTypeRecords;
+
+	TArray<FInventoryRecord> InventoryRecords;
+
+	TArray<FGoodsAuditRecord> GoodsAuditRecords;
+
+#if WITH_DEV_AUTOMATION_TESTS
+	/**
+	 * Test-only access to private storage, so that invariant detection can be proven against
+	 * deliberately corrupted state.
+	 *
+	 * This exists because ValidateInvariants is worth nothing unless something demonstrates
+	 * that it fails when state is wrong, and the public operations correctly make invalid
+	 * state unreachable. It is compiled out of shipping builds, is declared nowhere else,
+	 * and adds no production mutation path: the alternative would have been a public API for
+	 * corrupting the registry, which would be far worse.
+	 */
+	friend struct FSimulationRegistryTestAccess;
+#endif
 };

@@ -47,6 +47,38 @@ namespace
 		return Occurrences;
 	}
 
+	/** Slot of a good type's entry within one inventory, or INDEX_NONE when it holds none. */
+	int32 FindEntryIndex(const TArray<FInventoryEntry>& Entries, FGoodTypeId GoodTypeId)
+	{
+		for (int32 EntryIndex = 0; EntryIndex < Entries.Num(); ++EntryIndex)
+		{
+			if (Entries[EntryIndex].GoodTypeId == GoodTypeId)
+			{
+				return EntryIndex;
+			}
+		}
+
+		return INDEX_NONE;
+	}
+
+	/** Quantity of a good type held, or zero when the inventory holds none of it. */
+	int32 GetEntryQuantity(const TArray<FInventoryEntry>& Entries, FGoodTypeId GoodTypeId)
+	{
+		const int32 EntryIndex = FindEntryIndex(Entries, GoodTypeId);
+		return EntryIndex == INDEX_NONE ? 0 : Entries[EntryIndex].Quantity;
+	}
+
+	/**
+	 * Whether adding Quantity to ExistingQuantity would exceed the representable maximum.
+	 *
+	 * The comparison is rearranged so the sum is never formed unless it is known to fit;
+	 * signed overflow is undefined behaviour and cannot be detected after the fact.
+	 */
+	bool WouldExceedMaxQuantity(int32 ExistingQuantity, int32 Quantity)
+	{
+		return Quantity > MaxGoodQuantity - ExistingQuantity;
+	}
+
 	/** Reports the first identifier listed more than once, if any. */
 	template <typename TIdType>
 	bool TryFindDuplicate(const TArray<TIdType>& List, TIdType& OutDuplicate)
@@ -137,6 +169,40 @@ FPropertyId FSimulationRegistry::CreateProperty(FSettlementId SettlementId)
 	return NewPropertyId;
 }
 
+FGoodTypeId FSimulationRegistry::CreateGoodType(FName AuthoredKey, const FString& DisplayName)
+{
+	// Validated before anything is stored, so a rejected definition consumes no runtime
+	// handle and leaves the registry exactly as it was.
+	if (AuthoredKey.IsNone())
+	{
+		return FGoodTypeId();
+	}
+
+	if (FindGoodTypeIdByKey(AuthoredKey).IsSet())
+	{
+		return FGoodTypeId();
+	}
+
+	const int32 RecordIndex = GoodTypeRecords.AddDefaulted();
+
+	FGoodTypeRecord& GoodTypeRecord = GoodTypeRecords[RecordIndex];
+	GoodTypeRecord.AuthoredKey = AuthoredKey;
+	GoodTypeRecord.Id = FromRecordIndex<FGoodTypeId>(RecordIndex);
+	GoodTypeRecord.Name = DisplayName;
+
+	return GoodTypeRecord.Id;
+}
+
+FInventoryId FSimulationRegistry::CreateInventory()
+{
+	const int32 RecordIndex = InventoryRecords.AddDefaulted();
+
+	FInventoryRecord& InventoryRecord = InventoryRecords[RecordIndex];
+	InventoryRecord.Id = FromRecordIndex<FInventoryId>(RecordIndex);
+
+	return InventoryRecord.Id;
+}
+
 bool FSimulationRegistry::ContainsPerson(FPersonId PersonId) const
 {
 	return ResolvePerson(PersonId) != nullptr;
@@ -155,6 +221,16 @@ bool FSimulationRegistry::ContainsSettlement(FSettlementId SettlementId) const
 bool FSimulationRegistry::ContainsProperty(FPropertyId PropertyId) const
 {
 	return ResolveProperty(PropertyId) != nullptr;
+}
+
+bool FSimulationRegistry::ContainsGoodType(FGoodTypeId GoodTypeId) const
+{
+	return ResolveGoodType(GoodTypeId) != nullptr;
+}
+
+bool FSimulationRegistry::ContainsInventory(FInventoryId InventoryId) const
+{
+	return ResolveInventory(InventoryId) != nullptr;
 }
 
 TOptional<FPersonRecord> FSimulationRegistry::FindPerson(FPersonId PersonId) const
@@ -195,6 +271,58 @@ TOptional<FPropertyRecord> FSimulationRegistry::FindProperty(FPropertyId Propert
 	}
 
 	return TOptional<FPropertyRecord>();
+}
+
+TOptional<FGoodTypeRecord> FSimulationRegistry::FindGoodType(FGoodTypeId GoodTypeId) const
+{
+	if (const FGoodTypeRecord* GoodTypeRecord = ResolveGoodType(GoodTypeId))
+	{
+		return TOptional<FGoodTypeRecord>(*GoodTypeRecord);
+	}
+
+	return TOptional<FGoodTypeRecord>();
+}
+
+TOptional<FGoodTypeId> FSimulationRegistry::FindGoodTypeIdByKey(FName AuthoredKey) const
+{
+	if (AuthoredKey.IsNone())
+	{
+		return TOptional<FGoodTypeId>();
+	}
+
+	// A scan of the good type records, which are few and which already hold the authored
+	// keys. A key-to-handle index would be a second copy of this relationship to keep
+	// consistent, and is not worth it until measurement says otherwise.
+	for (const FGoodTypeRecord& GoodTypeRecord : GoodTypeRecords)
+	{
+		if (GoodTypeRecord.AuthoredKey == AuthoredKey)
+		{
+			return TOptional<FGoodTypeId>(GoodTypeRecord.Id);
+		}
+	}
+
+	return TOptional<FGoodTypeId>();
+}
+
+TOptional<FInventoryRecord> FSimulationRegistry::FindInventory(FInventoryId InventoryId) const
+{
+	if (const FInventoryRecord* InventoryRecord = ResolveInventory(InventoryId))
+	{
+		return TOptional<FInventoryRecord>(*InventoryRecord);
+	}
+
+	return TOptional<FInventoryRecord>();
+}
+
+TOptional<int32> FSimulationRegistry::GetQuantity(FInventoryId InventoryId, FGoodTypeId GoodTypeId) const
+{
+	const FInventoryRecord* InventoryRecord = ResolveInventory(InventoryId);
+	if (InventoryRecord == nullptr || !ContainsGoodType(GoodTypeId))
+	{
+		return TOptional<int32>();
+	}
+
+	return TOptional<int32>(GetEntryQuantity(InventoryRecord->Entries, GoodTypeId));
 }
 
 EHouseholdMembershipResult FSimulationRegistry::AddPersonToHousehold(FPersonId PersonId, FHouseholdId HouseholdId)
@@ -365,6 +493,207 @@ EResidenceResult FSimulationRegistry::RemoveHouseholdResidence(FHouseholdId Hous
 	return EResidenceResult::Success;
 }
 
+void FSimulationRegistry::ApplyGoodsAddition(
+	FInventoryRecord& InventoryRecord, FGoodTypeId GoodTypeId, int32 Quantity)
+{
+	const int32 EntryIndex = FindEntryIndex(InventoryRecord.Entries, GoodTypeId);
+	const int32 ExistingQuantity = EntryIndex == INDEX_NONE ? 0 : InventoryRecord.Entries[EntryIndex].Quantity;
+
+	checkf(Quantity > 0, TEXT("Unvalidated quantity %d reached the inventory addition primitive."), Quantity);
+	checkf(!WouldExceedMaxQuantity(ExistingQuantity, Quantity),
+		TEXT("Unvalidated addition of %d to %d reached the inventory addition primitive."),
+		Quantity, ExistingQuantity);
+
+	if (EntryIndex == INDEX_NONE)
+	{
+		FInventoryEntry& NewEntry = InventoryRecord.Entries.AddDefaulted_GetRef();
+		NewEntry.GoodTypeId = GoodTypeId;
+		NewEntry.Quantity = Quantity;
+	}
+	else
+	{
+		InventoryRecord.Entries[EntryIndex].Quantity = ExistingQuantity + Quantity;
+	}
+}
+
+void FSimulationRegistry::ApplyGoodsRemoval(
+	FInventoryRecord& InventoryRecord, FGoodTypeId GoodTypeId, int32 Quantity)
+{
+	const int32 EntryIndex = FindEntryIndex(InventoryRecord.Entries, GoodTypeId);
+
+	checkf(Quantity > 0, TEXT("Unvalidated quantity %d reached the inventory removal primitive."), Quantity);
+	checkf(EntryIndex != INDEX_NONE && InventoryRecord.Entries[EntryIndex].Quantity >= Quantity,
+		TEXT("Unvalidated removal of %d reached the inventory removal primitive."), Quantity);
+
+	const int32 RemainingQuantity = InventoryRecord.Entries[EntryIndex].Quantity - Quantity;
+	if (RemainingQuantity == 0)
+	{
+		// Order-preserving, so entry order stays insertion order rather than depending on
+		// which entry happened to empty.
+		InventoryRecord.Entries.RemoveAt(EntryIndex);
+	}
+	else
+	{
+		InventoryRecord.Entries[EntryIndex].Quantity = RemainingQuantity;
+	}
+}
+
+void FSimulationRegistry::RecordGoodsAudit(
+	EGoodsAuditAction Action, FInventoryId InventoryId, FGoodTypeId GoodTypeId, int32 Quantity, FName Reason)
+{
+	FGoodsAuditRecord& AuditRecord = GoodsAuditRecords.AddDefaulted_GetRef();
+	AuditRecord.Action = Action;
+	AuditRecord.InventoryId = InventoryId;
+	AuditRecord.GoodTypeId = GoodTypeId;
+	AuditRecord.Quantity = Quantity;
+	AuditRecord.Reason = Reason;
+}
+
+TOptional<FGoodsAuditRecord> FSimulationRegistry::GetGoodsAuditRecord(int32 RecordIndex) const
+{
+	if (!GoodsAuditRecords.IsValidIndex(RecordIndex))
+	{
+		return TOptional<FGoodsAuditRecord>();
+	}
+
+	return TOptional<FGoodsAuditRecord>(GoodsAuditRecords[RecordIndex]);
+}
+
+EAddGoodsResult FSimulationRegistry::AddGoods(
+	FInventoryId InventoryId, FGoodTypeId GoodTypeId, int32 Quantity, FName Reason)
+{
+	FInventoryRecord* InventoryRecord = ResolveInventoryMutable(InventoryId);
+	if (InventoryRecord == nullptr)
+	{
+		return EAddGoodsResult::UnknownInventory;
+	}
+
+	if (!ContainsGoodType(GoodTypeId))
+	{
+		return EAddGoodsResult::UnknownGoodType;
+	}
+
+	if (Quantity <= 0)
+	{
+		return EAddGoodsResult::InvalidQuantity;
+	}
+
+	// Quantity may not come into existence anonymously.
+	if (Reason.IsNone())
+	{
+		return EAddGoodsResult::InvalidReason;
+	}
+
+	const int32 ExistingQuantity = GetEntryQuantity(InventoryRecord->Entries, GoodTypeId);
+	if (WouldExceedMaxQuantity(ExistingQuantity, Quantity))
+	{
+		return EAddGoodsResult::Overflow;
+	}
+
+	ApplyGoodsAddition(*InventoryRecord, GoodTypeId, Quantity);
+	RecordGoodsAudit(EGoodsAuditAction::Created, InventoryId, GoodTypeId, Quantity, Reason);
+
+	return EAddGoodsResult::Success;
+}
+
+ERemoveGoodsResult FSimulationRegistry::RemoveGoods(
+	FInventoryId InventoryId, FGoodTypeId GoodTypeId, int32 Quantity, FName Reason)
+{
+	FInventoryRecord* InventoryRecord = ResolveInventoryMutable(InventoryId);
+	if (InventoryRecord == nullptr)
+	{
+		return ERemoveGoodsResult::UnknownInventory;
+	}
+
+	if (!ContainsGoodType(GoodTypeId))
+	{
+		return ERemoveGoodsResult::UnknownGoodType;
+	}
+
+	if (Quantity <= 0)
+	{
+		return ERemoveGoodsResult::InvalidQuantity;
+	}
+
+	// Quantity may not cease to exist anonymously.
+	if (Reason.IsNone())
+	{
+		return ERemoveGoodsResult::InvalidReason;
+	}
+
+	// An inventory holding none of the good type has no entry at all, which is the same
+	// rejection as holding too little.
+	if (GetEntryQuantity(InventoryRecord->Entries, GoodTypeId) < Quantity)
+	{
+		return ERemoveGoodsResult::InsufficientQuantity;
+	}
+
+	ApplyGoodsRemoval(*InventoryRecord, GoodTypeId, Quantity);
+	RecordGoodsAudit(EGoodsAuditAction::Destroyed, InventoryId, GoodTypeId, Quantity, Reason);
+
+	return ERemoveGoodsResult::Success;
+}
+
+ETransferGoodsResult FSimulationRegistry::TransferGoods(
+	FInventoryId SourceInventoryId,
+	FInventoryId DestinationInventoryId,
+	FGoodTypeId GoodTypeId,
+	int32 Quantity)
+{
+	const FInventoryRecord* SourceRecord = ResolveInventory(SourceInventoryId);
+	if (SourceRecord == nullptr)
+	{
+		return ETransferGoodsResult::UnknownSourceInventory;
+	}
+
+	const FInventoryRecord* DestinationRecord = ResolveInventory(DestinationInventoryId);
+	if (DestinationRecord == nullptr)
+	{
+		return ETransferGoodsResult::UnknownDestinationInventory;
+	}
+
+	if (!ContainsGoodType(GoodTypeId))
+	{
+		return ETransferGoodsResult::UnknownGoodType;
+	}
+
+	if (Quantity <= 0)
+	{
+		return ETransferGoodsResult::InvalidQuantity;
+	}
+
+	// Structural rejection before the state-dependent ones, so a transfer to the same
+	// inventory reports SameInventory whether or not it could otherwise have succeeded. It
+	// is also what lets the two halves below be validated independently.
+	if (SourceInventoryId == DestinationInventoryId)
+	{
+		return ETransferGoodsResult::SameInventory;
+	}
+
+	if (GetEntryQuantity(SourceRecord->Entries, GoodTypeId) < Quantity)
+	{
+		return ETransferGoodsResult::InsufficientQuantity;
+	}
+
+	if (WouldExceedMaxQuantity(GetEntryQuantity(DestinationRecord->Entries, GoodTypeId), Quantity))
+	{
+		return ETransferGoodsResult::Overflow;
+	}
+
+	// Nothing is created or destroyed here, so the two internal quantity mutations are
+	// applied directly rather than through AddGoods and RemoveGoods. That keeps a transfer
+	// out of the audit trail, and it means no future creation or destruction policy on those
+	// public operations can refuse half of an already validated transfer.
+	//
+	// Neither primitive can fail: both halves were validated above, and the inventories are
+	// distinct, so applying one cannot invalidate the other's precondition. Each record is
+	// resolved immediately before use, so no address is held across a mutation.
+	ApplyGoodsRemoval(*ResolveInventoryMutable(SourceInventoryId), GoodTypeId, Quantity);
+	ApplyGoodsAddition(*ResolveInventoryMutable(DestinationInventoryId), GoodTypeId, Quantity);
+
+	return ETransferGoodsResult::Success;
+}
+
 bool FSimulationRegistry::ValidateInvariants(FString& OutFailureDescription) const
 {
 	OutFailureDescription.Reset();
@@ -372,7 +701,9 @@ bool FSimulationRegistry::ValidateInvariants(FString& OutFailureDescription) con
 	return ValidatePersonRecords(OutFailureDescription)
 		&& ValidateHouseholdRecords(OutFailureDescription)
 		&& ValidateSettlementRecords(OutFailureDescription)
-		&& ValidatePropertyRecords(OutFailureDescription);
+		&& ValidatePropertyRecords(OutFailureDescription)
+		&& ValidateGoodTypeRecords(OutFailureDescription)
+		&& ValidateInventoryRecords(OutFailureDescription);
 }
 
 bool FSimulationRegistry::ValidatePersonRecords(FString& OutFailureDescription) const
@@ -658,6 +989,94 @@ bool FSimulationRegistry::ValidatePropertyRecords(FString& OutFailureDescription
 	return true;
 }
 
+bool FSimulationRegistry::ValidateGoodTypeRecords(FString& OutFailureDescription) const
+{
+	for (int32 RecordIndex = 0; RecordIndex < GoodTypeRecords.Num(); ++RecordIndex)
+	{
+		const FGoodTypeRecord& GoodTypeRecord = GoodTypeRecords[RecordIndex];
+
+		if (ToRecordIndex(GoodTypeRecord.Id, GoodTypeRecords.Num()) != RecordIndex)
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Good type slot %d holds identifier %s."), RecordIndex, *GoodTypeRecord.Id.ToString());
+			return false;
+		}
+
+		if (GoodTypeRecord.AuthoredKey.IsNone())
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Good type slot %d has no authored key."), RecordIndex);
+			return false;
+		}
+
+		// The authored key is a definition identity, so it must identify exactly one good
+		// type. Compared against earlier slots only, so the first duplicate is reported once.
+		for (int32 EarlierIndex = 0; EarlierIndex < RecordIndex; ++EarlierIndex)
+		{
+			if (GoodTypeRecords[EarlierIndex].AuthoredKey == GoodTypeRecord.AuthoredKey)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("Good type slots %d and %d share the authored key '%s'."),
+					EarlierIndex, RecordIndex, *GoodTypeRecord.AuthoredKey.ToString());
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+bool FSimulationRegistry::ValidateInventoryRecords(FString& OutFailureDescription) const
+{
+	for (int32 RecordIndex = 0; RecordIndex < InventoryRecords.Num(); ++RecordIndex)
+	{
+		const FInventoryRecord& InventoryRecord = InventoryRecords[RecordIndex];
+
+		if (ToRecordIndex(InventoryRecord.Id, InventoryRecords.Num()) != RecordIndex)
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Inventory slot %d holds identifier %s."), RecordIndex, *InventoryRecord.Id.ToString());
+			return false;
+		}
+
+		TSet<FGoodTypeId> SeenGoodTypeIds;
+		SeenGoodTypeIds.Reserve(InventoryRecord.Entries.Num());
+
+		for (const FInventoryEntry& Entry : InventoryRecord.Entries)
+		{
+			bool bAlreadySeen = false;
+			SeenGoodTypeIds.Add(Entry.GoodTypeId, &bAlreadySeen);
+			if (bAlreadySeen)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s holds more than one entry for %s."),
+					*InventoryRecord.Id.ToString(), *Entry.GoodTypeId.ToString());
+				return false;
+			}
+
+			if (!ContainsGoodType(Entry.GoodTypeId))
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s holds unresolvable %s."),
+					*InventoryRecord.Id.ToString(), *Entry.GoodTypeId.ToString());
+				return false;
+			}
+
+			// Quantities are int32 and capped at the type's own maximum, so the only
+			// unrepresentable stored values are these.
+			if (Entry.Quantity <= 0)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s stores a quantity of %d for %s; stored quantities must be positive."),
+					*InventoryRecord.Id.ToString(), Entry.Quantity, *Entry.GoodTypeId.ToString());
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 const FPersonRecord* FSimulationRegistry::ResolvePerson(FPersonId PersonId) const
 {
 	const int32 RecordIndex = ToRecordIndex(PersonId, PersonRecords.Num());
@@ -682,6 +1101,18 @@ const FPropertyRecord* FSimulationRegistry::ResolveProperty(FPropertyId Property
 	return RecordIndex == INDEX_NONE ? nullptr : &PropertyRecords[RecordIndex];
 }
 
+const FGoodTypeRecord* FSimulationRegistry::ResolveGoodType(FGoodTypeId GoodTypeId) const
+{
+	const int32 RecordIndex = ToRecordIndex(GoodTypeId, GoodTypeRecords.Num());
+	return RecordIndex == INDEX_NONE ? nullptr : &GoodTypeRecords[RecordIndex];
+}
+
+const FInventoryRecord* FSimulationRegistry::ResolveInventory(FInventoryId InventoryId) const
+{
+	const int32 RecordIndex = ToRecordIndex(InventoryId, InventoryRecords.Num());
+	return RecordIndex == INDEX_NONE ? nullptr : &InventoryRecords[RecordIndex];
+}
+
 FPersonRecord* FSimulationRegistry::ResolvePersonMutable(FPersonId PersonId)
 {
 	return const_cast<FPersonRecord*>(ResolvePerson(PersonId));
@@ -700,6 +1131,11 @@ FSettlementRecord* FSimulationRegistry::ResolveSettlementMutable(FSettlementId S
 FPropertyRecord* FSimulationRegistry::ResolvePropertyMutable(FPropertyId PropertyId)
 {
 	return const_cast<FPropertyRecord*>(ResolveProperty(PropertyId));
+}
+
+FInventoryRecord* FSimulationRegistry::ResolveInventoryMutable(FInventoryId InventoryId)
+{
+	return const_cast<FInventoryRecord*>(ResolveInventory(InventoryId));
 }
 
 void FSimulationRegistry::SetPersonHousehold(FPersonRecord& PersonRecord, FHouseholdId NewHouseholdId)

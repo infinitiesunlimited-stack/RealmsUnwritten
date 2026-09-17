@@ -68,10 +68,22 @@ struct FPropertyIdTag
 	static constexpr const TCHAR* DebugName = TEXT("Property");
 };
 
+struct FGoodTypeIdTag
+{
+	static constexpr const TCHAR* DebugName = TEXT("GoodType");
+};
+
+struct FInventoryIdTag
+{
+	static constexpr const TCHAR* DebugName = TEXT("Inventory");
+};
+
 using FPersonId = TSimulationId<FPersonIdTag>;
 using FHouseholdId = TSimulationId<FHouseholdIdTag>;
 using FSettlementId = TSimulationId<FSettlementIdTag>;
 using FPropertyId = TSimulationId<FPropertyIdTag>;
+using FGoodTypeId = TSimulationId<FGoodTypeIdTag>;
+using FInventoryId = TSimulationId<FInventoryIdTag>;
 
 namespace SimulationIdContract
 {
@@ -101,5 +113,6 @@ namespace SimulationIdContract
 // entity family only has to be added to this list. The contract lives with the types rather
 // than only in the tests.
 static_assert(
-	SimulationIdContract::TMutuallyDistinct<FPersonId, FHouseholdId, FSettlementId, FPropertyId>::value,
+	SimulationIdContract::TMutuallyDistinct<
+		FPersonId, FHouseholdId, FSettlementId, FPropertyId, FGoodTypeId, FInventoryId>::value,
 	"Simulation identifier families must never be interchangeable with one another.");

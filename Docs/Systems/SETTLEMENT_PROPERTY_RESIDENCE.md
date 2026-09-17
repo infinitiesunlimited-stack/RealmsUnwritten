@@ -5,6 +5,7 @@
 - **Role:** Implementation record for the Prototype 0.1B settlement, property, and residence foundation
 - **Authority:** Subordinate to `DESIGN_CONSTITUTION.md`, `HIGH_LEVEL_ARCHITECTURE.md`, `DATA_MODEL_OVERVIEW.md`, and `PROTOTYPE_0_1_SCOPE.md`
 - **Extends:** `SIMULATION_FOUNDATION.md` (accepted Prototype 0.1A), which is not superseded
+- **Extended by:** `GOODS_INVENTORY.md` (Prototype 0.1C), which adds good types and inventories without changing anything recorded here
 - **Scope:** Settlements, properties, household settlement membership, and household residence
 - **Describes:** Only what exists in the repository today
 
@@ -59,7 +60,7 @@ They inherit every property documented in 0.1A: phantom-typed, `explicit` raw-va
 
 ### Type-safety assertions
 
-0.1A asserted non-interchangeability with five pairwise `static_assert`s for two families. Four families would need twenty-four, so the assertions were replaced by one predicate applied to the whole set:
+0.1A asserted non-interchangeability with five pairwise `static_assert`s for two families. Four families would need twenty-four, so the assertions were replaced by one predicate applied to the whole set. Prototype 0.1C then extended it to six families by adding two names to the list, which is what the mechanism was built for:
 
 ```cpp
 static_assert(
@@ -254,7 +255,7 @@ A settlement snapshot copies both of its arrays. That is the one new cost in thi
 
 ## Testing
 
-`Private/Tests/SettlementPropertyResidenceTests.cpp`, guarded by `WITH_DEV_AUTOMATION_TESTS`. Nine new automation tests, alongside the nine accepted 0.1A tests, for **18 tests under `RealmsUnwritten.Simulation`**.
+`Private/Tests/SettlementPropertyResidenceTests.cpp`, guarded by `WITH_DEV_AUTOMATION_TESTS`. Nine new automation tests, alongside the nine accepted 0.1A tests, for **18 tests under `RealmsUnwritten.Simulation`** at the time of this slice. Prototype 0.1C added fifteen more, bringing the suite to 33.
 
 | Test | Covers |
 |---|---|
@@ -291,7 +292,7 @@ UnrealEditor-Cmd.exe "<repo>\RealmsUnwritten.uproject" ^
   -unattended -nopause -nosplash -nullrhi -NoSound -log
 ```
 
-Result: **18 succeeded, 0 failed, 0 with warnings**, `EXIT CODE: 0`. This includes all nine accepted 0.1A tests, unchanged and still passing.
+Result: **18 succeeded, 0 failed, 0 with warnings**, `EXIT CODE: 0`. This includes all nine accepted 0.1A tests, unchanged and still passing. These eighteen tests are also unchanged by Prototype 0.1C and still pass, in a suite that now reports 33.
 
 ## Known limitations
 
@@ -314,7 +315,7 @@ Nothing outside settlements, properties, household settlement membership, and ho
 - Actors, Pawns, Characters, components, visual villagers, meshes, buildings, burgage models, and animation
 - Parcel geometry, lot drawing, boundaries, acreage, soil, fertility, roads, addresses, and zoning
 - Construction, building upgrades, improvements, land use, and property development
-- Fields, farms, crops, forestry, resources, goods, inventories, storage, custody, and logistics
+- Fields, farms, crops, forestry, resources, goods, inventories, storage, custody, and logistics — good types, inventories, and conserved transfer landed in 0.1C; the rest remain deferred
 - Production, household production, work, jobs, occupations, markets, prices, money, and wealth
 - Property ownership, deeds, rights, tenancy, landlords, rent, purchase, sale, inheritance, taxes, and property value
 - Immigration, migration, refugee and displacement logic, and population spawning
