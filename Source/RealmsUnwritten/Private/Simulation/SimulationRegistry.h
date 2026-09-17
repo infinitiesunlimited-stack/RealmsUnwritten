@@ -8,6 +8,7 @@
 #include "Simulation/HouseholdRecord.h"
 #include "Simulation/InventoryRecord.h"
 #include "Simulation/PersonRecord.h"
+#include "Simulation/PhysicalSiteRecord.h"
 #include "Simulation/PropertyRecord.h"
 #include "Simulation/SettlementRecord.h"
 #include "Simulation/SimulationIds.h"
@@ -99,6 +100,37 @@ enum class EResidenceResult : uint8
 };
 
 /**
+ * Outcome of changing where an inventory physically is.
+ *
+ * Placing an inventory at a site, moving it between sites, and taking its place away are all
+ * authoritative state changes. None of them is a journey: nothing is carried, no time passes,
+ * and no route is required or checked.
+ */
+enum class EInventoryLocationResult : uint8
+{
+	/** The inventory's location changed; both sides are consistent. */
+	Success,
+
+	/** The inventory was already at the requested site; no state changed. */
+	AlreadyAtSite,
+
+	/** The inventory identifier does not resolve to a record; no state changed. */
+	UnknownInventory,
+
+	/** The physical site identifier does not resolve to a record; no state changed. */
+	UnknownSite,
+
+	/** The inventory is already nowhere, so there was no location to remove. No state changed. */
+	NotLocated,
+
+	/**
+	 * The inventory holds goods, which may not be left without a place. Move it to another
+	 * site, or empty it first. No state changed.
+	 */
+	InventoryNotEmpty
+};
+
+/**
  * Outcome of adding goods to an inventory.
  *
  * Adding creates simulation quantity, which is a controlled low-level mutation rather than a
@@ -121,6 +153,12 @@ enum class EAddGoodsResult : uint8
 
 	/** No reason was supplied, so the creation would have been anonymous; no state changed. */
 	InvalidReason,
+
+	/**
+	 * The inventory is nowhere, so the goods would have come into existence with no place to
+	 * be. Give the inventory a location first. No state changed.
+	 */
+	InventoryNotLocated,
 
 	/** The inventory cannot hold that much of the good type without exceeding MaxGoodQuantity. */
 	Overflow
@@ -181,6 +219,12 @@ enum class ETransferGoodsResult : uint8
 	 */
 	SameInventory,
 
+	/** The source inventory is nowhere, so there is no place for goods to leave. No state changed. */
+	SourceInventoryNotLocated,
+
+	/** The destination inventory is nowhere, so there is no place for goods to arrive. No state changed. */
+	DestinationInventoryNotLocated,
+
 	/** The source does not hold that much of the good type; no state changed. */
 	InsufficientQuantity,
 
@@ -189,8 +233,8 @@ enum class ETransferGoodsResult : uint8
 };
 
 /**
- * Authoritative owner of person, household, settlement, property, good type, and inventory
- * records.
+ * Authoritative owner of person, household, settlement, property, good type, inventory, and
+ * physical site records.
  *
  * The registry is plain C++: no UObject, no Actor, no tick, no loaded map, and no
  * Blueprint exposure. Anything that needs a record resolves it by stable identifier
@@ -199,14 +243,19 @@ enum class ETransferGoodsResult : uint8
  * Reads return snapshots by value, so no caller ever holds an address into registry
  * storage. Each two-sided relationship is mutated only through its own pair of public
  * operations, each funnelling into a single private transition: person/household
- * membership, household/settlement location, and household/property residence. Callers
- * therefore cannot edit a record directly, and cannot leave either side of a relationship
- * disagreeing with the other.
+ * membership, household/settlement location, household/property residence, and
+ * inventory/site location. Callers therefore cannot edit a record directly, and cannot
+ * leave either side of a relationship disagreeing with the other.
  *
  * Inventory contents are one-sided rather than a relationship, so they are mutated through
  * AddGoods, RemoveGoods, and TransferGoods. No caller receives a mutable inventory, so the
  * rules that quantities stay positive and that a good type appears at most once per
  * inventory cannot be bypassed.
+ *
+ * Goods are also located, not merely held. An inventory holding anything is at exactly one
+ * resolvable physical site, so every quantity in the registry has a place: goods may only be
+ * created in a located inventory, may only move between located inventories, and an
+ * inventory cannot be made placeless while it holds anything.
  *
  * Those three operations divide into creation, destruction, and movement. The first two
  * change how much quantity exists and each leaves an audit record naming the caller's
@@ -248,6 +297,19 @@ public:
 	FPropertyId CreateProperty(FSettlementId SettlementId);
 
 	/**
+	 * Creates a physical site on the given property, holding no inventories.
+	 *
+	 * The purpose key classifies what the site is for and must be supplied; it is not an
+	 * identity, so several sites may share one. The display name is display data and is not
+	 * validated, as elsewhere in the registry.
+	 *
+	 * Returns an invalid identifier when the property does not resolve or the purpose key is
+	 * None. A rejected creation is atomic: it adds no record, allocates no identifier, and
+	 * leaves the property's site list unchanged.
+	 */
+	FPhysicalSiteId CreatePhysicalSite(FPropertyId PropertyId, FName PurposeKey, const FString& DisplayName);
+
+	/**
 	 * Creates a good type under a durable authored key and returns its runtime handle.
 	 *
 	 * The authored key is the good type's definition identity and must be supplied by the
@@ -259,7 +321,7 @@ public:
 	 */
 	FGoodTypeId CreateGoodType(FName AuthoredKey, const FString& DisplayName);
 
-	/** Creates an empty inventory, holding no goods. */
+	/** Creates an empty inventory, holding no goods and located nowhere. */
 	FInventoryId CreateInventory();
 
 	/** Whether the identifier resolves to a person record. Safe for any identifier value. */
@@ -273,6 +335,9 @@ public:
 
 	/** Whether the identifier resolves to a property record. Safe for any identifier value. */
 	bool ContainsProperty(FPropertyId PropertyId) const;
+
+	/** Whether the identifier resolves to a physical site record. Safe for any identifier value. */
+	bool ContainsPhysicalSite(FPhysicalSiteId PhysicalSiteId) const;
 
 	/** Whether the identifier resolves to a good type record. Safe for any identifier value. */
 	bool ContainsGoodType(FGoodTypeId GoodTypeId) const;
@@ -310,6 +375,13 @@ public:
 	 * resolve. The result is a copy with the same contract as FindPerson.
 	 */
 	TOptional<FPropertyRecord> FindProperty(FPropertyId PropertyId) const;
+
+	/**
+	 * Reads a physical site record, or returns an unset optional for an identifier that does
+	 * not resolve. The result is a copy with the same contract as FindPerson, including a copy
+	 * of the inventory list.
+	 */
+	TOptional<FPhysicalSiteRecord> FindPhysicalSite(FPhysicalSiteId PhysicalSiteId) const;
 
 	/**
 	 * Reads a good type record, or returns an unset optional for an identifier that does not
@@ -356,6 +428,9 @@ public:
 
 	/** Number of property records held. Derived from storage. */
 	int32 GetPropertyCount() const { return PropertyRecords.Num(); }
+
+	/** Number of physical site records held. Derived from storage. */
+	int32 GetPhysicalSiteCount() const { return PhysicalSiteRecords.Num(); }
 
 	/** Number of good type records held. Derived from storage. */
 	int32 GetGoodTypeCount() const { return GoodTypeRecords.Num(); }
@@ -407,6 +482,27 @@ public:
 	EResidenceResult RemoveHouseholdResidence(FHouseholdId HouseholdId, FPropertyId PropertyId);
 
 	/**
+	 * Places the inventory at the physical site, removing it from any site it is currently at
+	 * so that it is never at two at once.
+	 *
+	 * This is the authoritative statement of where an inventory is, not an act of carrying.
+	 * Nothing is loaded, nothing travels, no distance or route is considered, and the goods
+	 * inside simply go where the inventory goes. Physical hauling will be built from carriers,
+	 * loading, travel, and unloading, and will use this only to record the result.
+	 */
+	EInventoryLocationResult AssignInventoryToSite(FInventoryId InventoryId, FPhysicalSiteId PhysicalSiteId);
+
+	/**
+	 * Takes away the inventory's location, leaving it nowhere, and removes it from its site's
+	 * list.
+	 *
+	 * Permitted only while the inventory is empty. An inventory holding goods is rejected with
+	 * InventoryNotEmpty, because goods may not exist without a place: to move them, assign the
+	 * inventory to another site instead.
+	 */
+	EInventoryLocationResult RemoveInventoryLocation(FInventoryId InventoryId);
+
+	/**
 	 * Creates a positive quantity of a good type inside an inventory, creating the entry if
 	 * the inventory held none of it.
 	 *
@@ -414,6 +510,9 @@ public:
 	 * low-level mutation that production, harvest, and scenario seeding will eventually call.
 	 * The caller must say why, and one creation audit record is appended on success.
 	 * Rejected requests leave the inventory untouched and append nothing.
+	 *
+	 * The inventory must already have a resolvable physical location. Goods cannot be brought
+	 * into existence nowhere, and no site is created or assigned on the caller's behalf.
 	 */
 	EAddGoodsResult AddGoods(FInventoryId InventoryId, FGoodTypeId GoodTypeId, int32 Quantity, FName Reason);
 
@@ -436,14 +535,20 @@ public:
 	 *
 	 * Every condition is validated before anything is written, in this order: source
 	 * resolves, destination resolves, good type resolves, quantity is positive, the two
-	 * inventories differ, the source holds enough, and the destination has headroom. Any
-	 * failure leaves *both* inventories exactly as they were. A transfer to the same
-	 * inventory is rejected with SameInventory; it is never a silent no-op.
+	 * inventories differ, both are located, the source holds enough, and the destination has
+	 * headroom. Any failure leaves *both* inventories exactly as they were. A transfer to the
+	 * same inventory is rejected with SameInventory; it is never a silent no-op.
 	 *
 	 * A transfer creates and destroys nothing, so it takes no reason and appends no audit
 	 * record. It does not route through AddGoods or RemoveGoods: it applies the same
 	 * internal quantity mutations those operations use, so no future creation or destruction
 	 * policy can reject half of an already validated transfer.
+	 *
+	 * This moves goods between two places without simulating the journey between them. It is
+	 * not transportation: no carrier, capacity, route, distance, or time is involved, and two
+	 * arbitrarily distant sites can exchange goods instantly. Physical movement will be built
+	 * as carrier loading, travel, and unloading, and will express itself through operations
+	 * like this one rather than replacing them.
 	 */
 	ETransferGoodsResult TransferGoods(
 		FInventoryId SourceInventoryId,
@@ -482,6 +587,8 @@ private:
 
 	const FPropertyRecord* ResolveProperty(FPropertyId PropertyId) const;
 
+	const FPhysicalSiteRecord* ResolvePhysicalSite(FPhysicalSiteId PhysicalSiteId) const;
+
 	const FGoodTypeRecord* ResolveGoodType(FGoodTypeId GoodTypeId) const;
 
 	const FInventoryRecord* ResolveInventory(FInventoryId InventoryId) const;
@@ -494,6 +601,8 @@ private:
 
 	FPropertyRecord* ResolvePropertyMutable(FPropertyId PropertyId);
 
+	FPhysicalSiteRecord* ResolvePhysicalSiteMutable(FPhysicalSiteId PhysicalSiteId);
+
 	FInventoryRecord* ResolveInventoryMutable(FInventoryId InventoryId);
 
 	/** The single authoritative person/household membership transition. Both sides or neither. */
@@ -504,6 +613,15 @@ private:
 
 	/** The single authoritative household/property residence transition. Both sides or neither. */
 	void SetHouseholdResidence(FHouseholdRecord& HouseholdRecord, FPropertyId NewPropertyId);
+
+	/**
+	 * The single authoritative inventory/site location transition. Both sides or neither.
+	 *
+	 * Every location change goes through here, including the removal of a location, so an
+	 * inventory can never be listed by a site it does not claim or claim a site that does not
+	 * list it.
+	 */
+	void SetInventoryLocation(FInventoryRecord& InventoryRecord, FInventoryLocation NewLocation);
 
 	/**
 	 * The two authoritative inventory quantity mutations, and the only code that writes an
@@ -522,6 +640,13 @@ private:
 
 	void ApplyGoodsRemoval(FInventoryRecord& InventoryRecord, FGoodTypeId GoodTypeId, int32 Quantity);
 
+	/**
+	 * Whether the inventory has a place that resolves, which is what goods require in order
+	 * to exist. Shared by AddGoods and TransferGoods so that both mean exactly the same thing
+	 * by "located".
+	 */
+	bool IsInventoryLocated(const FInventoryRecord& InventoryRecord) const;
+
 	/** Appends one creation or destruction audit record. Only AddGoods and RemoveGoods call it. */
 	void RecordGoodsAudit(
 		EGoodsAuditAction Action, FInventoryId InventoryId, FGoodTypeId GoodTypeId, int32 Quantity, FName Reason);
@@ -534,6 +659,8 @@ private:
 
 	bool ValidatePropertyRecords(FString& OutFailureDescription) const;
 
+	bool ValidatePhysicalSiteRecords(FString& OutFailureDescription) const;
+
 	bool ValidateGoodTypeRecords(FString& OutFailureDescription) const;
 
 	bool ValidateInventoryRecords(FString& OutFailureDescription) const;
@@ -545,6 +672,8 @@ private:
 	TArray<FSettlementRecord> SettlementRecords;
 
 	TArray<FPropertyRecord> PropertyRecords;
+
+	TArray<FPhysicalSiteRecord> PhysicalSiteRecords;
 
 	TArray<FGoodTypeRecord> GoodTypeRecords;
 
@@ -559,9 +688,10 @@ private:
 	 *
 	 * This exists because ValidateInvariants is worth nothing unless something demonstrates
 	 * that it fails when state is wrong, and the public operations correctly make invalid
-	 * state unreachable. It is compiled out of shipping builds, is declared nowhere else,
-	 * and adds no production mutation path: the alternative would have been a public API for
-	 * corrupting the registry, which would be far worse.
+	 * state unreachable. It is compiled out of shipping builds, is declared only in
+	 * Private/Tests/SimulationRegistryTestAccess.h, and adds no production mutation path: the
+	 * alternative would have been a public API for corrupting the registry, which would be
+	 * far worse.
 	 */
 	friend struct FSimulationRegistryTestAccess;
 #endif

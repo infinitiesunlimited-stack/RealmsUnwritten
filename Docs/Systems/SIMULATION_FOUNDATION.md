@@ -7,7 +7,7 @@
 - **Scope:** Persistent people and households only
 - **Describes:** Only what exists in the repository today
 - **Revision:** Updated after the independent Prototype 0.1A review; factual corrections applied where Prototype 0.1B extended this foundation
-- **Extended by:** `SETTLEMENT_PROPERTY_RESIDENCE.md` (Prototype 0.1B), which adds settlements, properties, and household residence, and `GOODS_INVENTORY.md` (Prototype 0.1C), which adds good types and inventories. This document is still the record for people, households, and their membership relationship.
+- **Extended by:** `SETTLEMENT_PROPERTY_RESIDENCE.md` (Prototype 0.1B), which adds settlements, properties, and household residence; `GOODS_INVENTORY.md` (Prototype 0.1C), which adds good types and inventories; and `PHYSICAL_SITE_INVENTORY_LOCATION.md` (Prototype 0.1D), which adds physical sites and inventory location. This document is still the record for people, households, and their membership relationship.
 
 ## Purpose
 
@@ -15,7 +15,7 @@ This is the first production slice of `PROTOTYPE_0_1_SCOPE.md` step 1–2 ("auth
 
 It answers one question: can people and households exist, be found, and be related to each other with no Actor, no map, no tick, and no visual representation?
 
-Nothing else was implemented by this slice. Settlements, properties, and household residence arrived in Prototype 0.1B (`SETTLEMENT_PROPERTY_RESIDENCE.md`), and good types and inventories in Prototype 0.1C (`GOODS_INVENTORY.md`). There is still no calendar, jobs, production, commands, events, or save format.
+Nothing else was implemented by this slice. Settlements, properties, and household residence arrived in Prototype 0.1B (`SETTLEMENT_PROPERTY_RESIDENCE.md`), good types and inventories in Prototype 0.1C (`GOODS_INVENTORY.md`), and physical sites with inventory location in Prototype 0.1D (`PHYSICAL_SITE_INVENTORY_LOCATION.md`). There is still no calendar, jobs, production, commands, events, or save format.
 
 ## Authoritative simulation boundary
 
@@ -130,7 +130,7 @@ No maximum age rule was invented, `0` is accepted, and `ValidateInvariants` also
 - **Occupation / job assignment** — needs occupation definitions and the Occupation and Labor system (scope step 4). Adding a bare string or enum now would create an unowned field and a second, definition-less vocabulary.
 - **Origin place, cultural background** — neither field exists on a person record. Settlements exist as of Prototype 0.1B, but nothing records where a person came from, and there is no culture system to reference.
 - **Residence** — a person record has no residence or settlement field, and gained none in 0.1B. Prototype 0.1B provides the property and residence foundation, but it is authoritative on the *household*: a household has an explicit settlement membership and an optional residential property, and a person's place is derived by reading their household's. See `SETTLEMENT_PROPERTY_RESIDENCE.md`.
-- **Inventory, possessions, skills, kin links, activity, location** — need knowledge, job, and spatial systems that do not exist. Prototype 0.1C added inventories, but a person record still holds no inventory reference: inventories have no holder of any kind yet, which `GOODS_INVENTORY.md` records as a labeled prototype exception.
+- **Inventory, possessions, skills, kin links, activity, location** — need knowledge, job, and spatial systems that do not exist. Prototype 0.1C added inventories and Prototype 0.1D locates them at physical sites, but a person record still holds no inventory reference: a person is not an inventory holder. See `PHYSICAL_SITE_INVENTORY_LOCATION.md`.
 - **Death date and cause, genetics, disease, personality, religion, ideology, knowledge, marriage, reproduction, inheritance, needs, individual AI, appearance** — out of scope by the assignment and by `PROTOTYPE_0_1_SCOPE.md`.
 
 ## Household representation
@@ -149,11 +149,11 @@ Prototype 0.1B added two further fields, `SettlementId` and `ResidenceId`, docum
 
 ### Fields deliberately not added
 
-Head/representative, origin/founding event, property rights, inventories, wealth, needs, consumption policy, migration status, and household history are all absent. Each needs a system that did not exist at 0.1A (property, inventory, market, migration, event history), and every one of them was explicitly deferred by the assignment. Residence was among them and landed in 0.1B; property *rights* remain absent, because occupancy is not ownership. Inventories themselves exist as of 0.1C, but a household record still holds no inventory reference, because inventories have no holder yet.
+Head/representative, origin/founding event, property rights, inventories, wealth, needs, consumption policy, migration status, and household history are all absent. Each needs a system that did not exist at 0.1A (property, inventory, market, migration, event history), and every one of them was explicitly deferred by the assignment. Residence was among them and landed in 0.1B; property *rights* remain absent, because occupancy is not ownership. Inventories themselves exist as of 0.1C and are located at physical sites as of 0.1D, but a household record still holds no inventory reference.
 
 ## Registry and state ownership
 
-`Private/Simulation/SimulationRegistry.{h,cpp}` defines `FSimulationRegistry`, the sole owner of person and household records. Prototype 0.1B extended the same class with settlement and property records, and Prototype 0.1C with good type and inventory records, all on the identical storage and read model.
+`Private/Simulation/SimulationRegistry.{h,cpp}` defines `FSimulationRegistry`, the sole owner of person and household records. Prototype 0.1B extended the same class with settlement and property records, Prototype 0.1C with good type and inventory records, and Prototype 0.1D with physical site records, all on the identical storage and read model.
 
 ### Storage
 
@@ -275,7 +275,7 @@ UnrealEditor-Cmd.exe "<repo>\RealmsUnwritten.uproject" ^
   -TestExit="Automation Test Queue Empty" -unattended -nopause -nosplash -nullrhi -NoSound
 ```
 
-Result: **9 found, 9 succeeded, 0 failed, 0 with warnings**, total duration 0.140 s. These nine tests are unchanged by Prototype 0.1B and 0.1C and still pass; the suite as a whole now reports 33 tests, the rest belonging to those later slices.
+Result: **9 found, 9 succeeded, 0 failed, 0 with warnings**, total duration 0.140 s. These nine tests are unchanged by Prototype 0.1B, 0.1C, and 0.1D and still pass; later slices added further tests under the same `RealmsUnwritten.Simulation` prefix.
 
 ## Known limitations
 
@@ -299,7 +299,7 @@ Nothing outside people, households, and their membership relationship was implem
 - Calendar, simulation clock, scheduling, and headless stepping
 - Settlements, properties, boundaries, roads, residences, and buildings — settlements, properties, and residence landed in 0.1B; boundaries, roads, and buildings remain deferred
 - Fields, crops, agriculture, farming, and forestry
-- Resources, lots, inventories, custody, reservations, logistics, and transport — good types, inventories, and conserved transfer landed in 0.1C; lots, reservations, capacity, logistics, and transport remain deferred
+- Resources, lots, inventories, custody, reservations, logistics, and transport — good types, inventories, and conserved transfer landed in 0.1C; physical sites and inventory location landed in 0.1D; lots, reservations, capacity, logistics, and transport remain deferred
 - Production, milling, baking, market exchange, prices, wealth, and consumption
 - Jobs, occupations, labor assignment, and needs
 - Birth, death, aging, marriage, reproduction, inheritance, household formation and dissolution, migration, and immigration

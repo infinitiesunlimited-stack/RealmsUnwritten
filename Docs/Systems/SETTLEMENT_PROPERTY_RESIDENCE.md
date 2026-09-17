@@ -5,7 +5,7 @@
 - **Role:** Implementation record for the Prototype 0.1B settlement, property, and residence foundation
 - **Authority:** Subordinate to `DESIGN_CONSTITUTION.md`, `HIGH_LEVEL_ARCHITECTURE.md`, `DATA_MODEL_OVERVIEW.md`, and `PROTOTYPE_0_1_SCOPE.md`
 - **Extends:** `SIMULATION_FOUNDATION.md` (accepted Prototype 0.1A), which is not superseded
-- **Extended by:** `GOODS_INVENTORY.md` (Prototype 0.1C), which adds good types and inventories without changing anything recorded here
+- **Extended by:** `GOODS_INVENTORY.md` (Prototype 0.1C) and `PHYSICAL_SITE_INVENTORY_LOCATION.md` (Prototype 0.1D). Prototype 0.1D adds a reverse `PhysicalSites` list on the property record; occupancy, settlement membership, and residence behaviour recorded here are unchanged.
 - **Scope:** Settlements, properties, household settlement membership, and household residence
 - **Describes:** Only what exists in the repository today
 
@@ -60,7 +60,7 @@ They inherit every property documented in 0.1A: phantom-typed, `explicit` raw-va
 
 ### Type-safety assertions
 
-0.1A asserted non-interchangeability with five pairwise `static_assert`s for two families. Four families would need twenty-four, so the assertions were replaced by one predicate applied to the whole set. Prototype 0.1C then extended it to six families by adding two names to the list, which is what the mechanism was built for:
+0.1A asserted non-interchangeability with five pairwise `static_assert`s for two families. Four families would need twenty-four, so the assertions were replaced by one predicate applied to the whole set. Later slices extend it by adding names to the list, which is what the mechanism was built for. Prototype 0.1D currently covers seven families.
 
 ```cpp
 static_assert(
@@ -68,7 +68,9 @@ static_assert(
     "Simulation identifier families must never be interchangeable with one another.");
 ```
 
-`TMutuallyDistinct` checks every unordered pair for sameness, convertibility in either direction, and constructibility in either direction, so all six pairs are covered in both directions with no loss of strictness relative to 0.1A. The assertion still lives next to the type aliases rather than in the tests, so it holds in every build. A future entity family is added by extending the list.
+That was the 0.1B list. `FGoodTypeId`, `FInventoryId`, and `FPhysicalSiteId` were appended later; the predicate itself did not change.
+
+`TMutuallyDistinct` checks every unordered pair for sameness, convertibility in either direction, and constructibility in either direction. The assertion still lives next to the type aliases rather than in the tests, so it holds in every build. A future entity family is added by extending the list.
 
 ## Settlement representation
 
@@ -98,6 +100,7 @@ Spatial extent, founding/origin data, regional and cultural context, road refere
 | `Id` | `FPropertyId` | Stable identity. Data model "Stable property ID". |
 | `SettlementId` | `FSettlementId` | Data model "Settlement 1 — contains/references — * Property". Always valid; see below. |
 | `ResidentHouseholdId` | `FHouseholdId` | Data model "occupier"; invalid means unoccupied. At most one household. |
+| `PhysicalSites` | `TArray<FPhysicalSiteId>` | Added by Prototype 0.1D as a registry-maintained reverse index of sites on this property. Occupancy is unchanged. See `PHYSICAL_SITE_INVENTORY_LOCATION.md`. |
 
 `SettlementId` is always valid on a stored record, because creation requires a resolvable settlement and this slice offers no operation that moves or detaches a property. `ValidateInvariants` treats a property with an unresolvable settlement as broken state rather than as an allowed "unassigned" case.
 
@@ -255,7 +258,7 @@ A settlement snapshot copies both of its arrays. That is the one new cost in thi
 
 ## Testing
 
-`Private/Tests/SettlementPropertyResidenceTests.cpp`, guarded by `WITH_DEV_AUTOMATION_TESTS`. Nine new automation tests, alongside the nine accepted 0.1A tests, for **18 tests under `RealmsUnwritten.Simulation`** at the time of this slice. Prototype 0.1C added fifteen more, bringing the suite to 33.
+`Private/Tests/SettlementPropertyResidenceTests.cpp`, guarded by `WITH_DEV_AUTOMATION_TESTS`. Nine new automation tests, alongside the nine accepted 0.1A tests, for **18 tests under `RealmsUnwritten.Simulation`** at the time of this slice. Later slices added further tests; these eighteen remain unchanged.
 
 | Test | Covers |
 |---|---|
@@ -292,7 +295,7 @@ UnrealEditor-Cmd.exe "<repo>\RealmsUnwritten.uproject" ^
   -unattended -nopause -nosplash -nullrhi -NoSound -log
 ```
 
-Result: **18 succeeded, 0 failed, 0 with warnings**, `EXIT CODE: 0`. This includes all nine accepted 0.1A tests, unchanged and still passing. These eighteen tests are also unchanged by Prototype 0.1C and still pass, in a suite that now reports 33.
+Result: **18 succeeded, 0 failed, 0 with warnings**, `EXIT CODE: 0`. This includes all nine accepted 0.1A tests, unchanged and still passing. These eighteen tests remain unchanged by later slices.
 
 ## Known limitations
 
@@ -315,7 +318,7 @@ Nothing outside settlements, properties, household settlement membership, and ho
 - Actors, Pawns, Characters, components, visual villagers, meshes, buildings, burgage models, and animation
 - Parcel geometry, lot drawing, boundaries, acreage, soil, fertility, roads, addresses, and zoning
 - Construction, building upgrades, improvements, land use, and property development
-- Fields, farms, crops, forestry, resources, goods, inventories, storage, custody, and logistics — good types, inventories, and conserved transfer landed in 0.1C; the rest remain deferred
+- Fields, farms, crops, forestry, resources, goods, inventories, storage, custody, and logistics — good types, inventories, and conserved transfer landed in 0.1C; physical sites and inventory location landed in 0.1D; the rest remain deferred
 - Production, household production, work, jobs, occupations, markets, prices, money, and wealth
 - Property ownership, deeds, rights, tenancy, landlords, rent, purchase, sale, inheritance, taxes, and property value
 - Immigration, migration, refugee and displacement logic, and population spawning

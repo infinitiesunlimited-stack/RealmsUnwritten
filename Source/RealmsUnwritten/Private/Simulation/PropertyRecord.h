@@ -30,4 +30,13 @@ struct FPropertyRecord
 	 * property is unoccupied. At most one household at a time.
 	 */
 	FHouseholdId ResidentHouseholdId;
+
+	/**
+	 * Physical sites that are part of this property. Contains no duplicates.
+	 *
+	 * A registry-maintained index over the authoritative back-reference
+	 * FPhysicalSiteRecord::PropertyId, like the settlement's lists. A property may have no
+	 * sites at all, one, or many.
+	 */
+	TArray<FPhysicalSiteId> PhysicalSites;
 };

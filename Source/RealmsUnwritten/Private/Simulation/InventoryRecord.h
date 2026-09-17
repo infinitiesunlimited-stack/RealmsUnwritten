@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 
+#include "Simulation/InventoryLocation.h"
 #include "Simulation/SimulationIds.h"
 
 /**
@@ -30,16 +31,21 @@ struct FInventoryEntry
 };
 
 /**
- * Authoritative record for one inventory: a custody boundary that holds quantities of goods.
+ * Authoritative record for one inventory: a custody boundary that holds quantities of goods,
+ * and that is itself somewhere.
  *
- * An inventory has no holder, site, location, owner, capacity, or reservation in this slice.
- * It exists independently, which is deliberate: the eventual holders (buildings, fields,
- * markets, vehicles, households, people) do not exist yet, and attaching the inventory to a
- * property or household now would prejudge that model. This is a labeled prototype
- * exception, documented in Docs/Systems/GOODS_INVENTORY.md.
+ * Custody and place are the two things an inventory answers for. It still has no owner, no
+ * capacity, no environment, and no reservations: who owns the goods and what conditions they
+ * are kept in are separate concerns that no system models yet.
  *
- * What is already protected: goods exist only inside an explicit inventory, so no settlement
- * or household carries a resource counter, and every quantity is in exactly one inventory.
+ * Location is authoritative here and nowhere else. An inventory's property and settlement are
+ * derived by following Location -> PhysicalSite -> Property -> Settlement, so none of them is
+ * duplicated onto this record and none of them can disagree with the site.
+ *
+ * What is protected: goods exist only inside an explicit inventory, so no settlement or
+ * household carries a resource counter; every quantity is in exactly one inventory; and every
+ * inventory holding goods is at exactly one valid place. An inventory may be nowhere only
+ * while it is empty.
  *
  * This record is plain simulation data: no Actor, no UObject, no mesh, and no tick.
  */
@@ -47,6 +53,12 @@ struct FInventoryRecord
 {
 	/** Stable identity assigned at creation. */
 	FInventoryId Id;
+
+	/**
+	 * Where this inventory physically is. Nowhere until assigned, and never nowhere while
+	 * Entries holds anything.
+	 */
+	FInventoryLocation Location;
 
 	/**
 	 * Goods held. Contains no duplicate good types, no unresolvable good types, and no

@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #include "Simulation/SimulationRegistry.h"
+#include "Tests/SimulationRegistryTestAccess.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -14,33 +15,13 @@
  * keys and names used here, `Goods.Wheat` and the rest, are test data only and appear in no
  * production code.
  *
+ * Tests that populate an inventory construct the smallest valid stationary chain required
+ * by Prototype 0.1D: Settlement -> Property -> PhysicalSite -> Inventory. Empty-inventory
+ * creation tests may leave the inventory unlocated.
+ *
  * The small helpers below are intentionally duplicated from the accepted test files rather
  * than shared, so that the accepted Prototype 0.1A and 0.1B test files stay untouched.
  */
-
-/**
- * Test-only access to the registry's private storage, befriended by FSimulationRegistry
- * under WITH_DEV_AUTOMATION_TESTS.
- *
- * It exists for one purpose: proving that ValidateInvariants actually detects corrupted
- * state. The public operations correctly make invalid state unreachable, so the only
- * alternative would have been a production API for corrupting the registry.
- *
- * Defined at global scope to match the friend declaration, and in this single translation
- * unit only.
- */
-struct FSimulationRegistryTestAccess
-{
-	static TArray<FGoodTypeRecord>& GoodTypeRecords(FSimulationRegistry& Registry)
-	{
-		return Registry.GoodTypeRecords;
-	}
-
-	static TArray<FInventoryRecord>& InventoryRecords(FSimulationRegistry& Registry)
-	{
-		return Registry.InventoryRecords;
-	}
-};
 
 namespace
 {
@@ -51,6 +32,31 @@ namespace
 	constexpr uint32 Int32MaxIdValue = 0x7FFFFFFFu;
 	constexpr uint32 SignBitIdValue = 0x80000000u;
 	constexpr uint32 UInt32MaxIdValue = 0xFFFFFFFFu;
+
+	/**
+	 * Smallest valid stationary place an inventory may occupy: one settlement, one property,
+	 * one physical site. Test data only; production code names no site purpose.
+	 */
+	FPhysicalSiteId CreateTestSite(FSimulationRegistry& Registry)
+	{
+		const FSettlementId SettlementId = Registry.CreateSettlement(TEXT("Test Settlement"));
+		const FPropertyId PropertyId = Registry.CreateProperty(SettlementId);
+		return Registry.CreatePhysicalSite(PropertyId, TEXT("Test.Storage"), TEXT("Test storage"));
+	}
+
+	/** Empty inventory assigned to an existing site. */
+	FInventoryId CreateLocatedInventory(FSimulationRegistry& Registry, FPhysicalSiteId PhysicalSiteId)
+	{
+		const FInventoryId InventoryId = Registry.CreateInventory();
+		Registry.AssignInventoryToSite(InventoryId, PhysicalSiteId);
+		return InventoryId;
+	}
+
+	/** Empty inventory at a newly created test site. */
+	FInventoryId CreateLocatedInventory(FSimulationRegistry& Registry)
+	{
+		return CreateLocatedInventory(Registry, CreateTestSite(Registry));
+	}
 
 	void VerifyInvariants(FAutomationTestBase& Test, const FSimulationRegistry& Registry, const TCHAR* Context)
 	{
@@ -321,6 +327,10 @@ bool FSimulationInventoryCreationTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("An inventory's record reports its own identifier"), InventoryRecord->Id == FirstInventory);
 	TestEqual(TEXT("A new inventory holds no entries"), InventoryRecord->Entries.Num(), 0);
+	TestTrue(TEXT("A new inventory is located nowhere"),
+		InventoryRecord->Location.Kind == EInventoryLocationKind::None);
+	TestFalse(TEXT("A new inventory names no physical site"),
+		InventoryRecord->Location.PhysicalSiteId.IsValid());
 	VerifyQuantity(*this, Registry, FirstInventory, Wheat, 0,
 		TEXT("A new inventory holds zero of a known good type"));
 
@@ -361,7 +371,7 @@ bool FSimulationAddGoodsTest::RunTest(const FString& Parameters)
 	const FName SeedReason(TEXT("Test.Seed"));
 	const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
 	const FGoodTypeId Flour = Registry.CreateGoodType(TEXT("Goods.Flour"), TEXT("Flour"));
-	const FInventoryId InventoryId = Registry.CreateInventory();
+	const FInventoryId InventoryId = CreateLocatedInventory(Registry);
 
 	TestTrue(TEXT("A valid quantity can be added"),
 		Registry.AddGoods(InventoryId, Wheat, 10, SeedReason) == EAddGoodsResult::Success);
@@ -423,7 +433,7 @@ bool FSimulationRemoveGoodsTest::RunTest(const FString& Parameters)
 	const FName ConsumeReason(TEXT("Test.Consume"));
 	const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
 	const FGoodTypeId Flour = Registry.CreateGoodType(TEXT("Goods.Flour"), TEXT("Flour"));
-	const FInventoryId InventoryId = Registry.CreateInventory();
+	const FInventoryId InventoryId = CreateLocatedInventory(Registry);
 	const FInventoryId EmptyInventory = Registry.CreateInventory();
 
 	Registry.AddGoods(InventoryId, Wheat, 10, SeedReason);
@@ -489,7 +499,8 @@ bool FSimulationQuantityBoundaryTest::RunTest(const FString& Parameters)
 	const FName SeedReason(TEXT("Test.Seed"));
 	const FName ConsumeReason(TEXT("Test.Consume"));
 	const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
-	const FInventoryId InventoryId = Registry.CreateInventory();
+	const FPhysicalSiteId SiteId = CreateTestSite(Registry);
+	const FInventoryId InventoryId = CreateLocatedInventory(Registry, SiteId);
 
 	// The maximum representable quantity is itself a valid holding.
 	TestTrue(TEXT("The maximum quantity can be added"),
@@ -512,8 +523,8 @@ bool FSimulationQuantityBoundaryTest::RunTest(const FString& Parameters)
 		Registry.FindInventory(InventoryId)->Entries.Num(), 0);
 
 	// Destination overflow during a transfer, checked before either side is touched.
-	const FInventoryId SourceInventory = Registry.CreateInventory();
-	const FInventoryId DestinationInventory = Registry.CreateInventory();
+	const FInventoryId SourceInventory = CreateLocatedInventory(Registry, SiteId);
+	const FInventoryId DestinationInventory = CreateLocatedInventory(Registry, SiteId);
 	Registry.AddGoods(SourceInventory, Wheat, 5, SeedReason);
 	Registry.AddGoods(DestinationInventory, Wheat, MaxGoodQuantity - 2, SeedReason);
 
@@ -553,8 +564,9 @@ bool FSimulationTransferGoodsTest::RunTest(const FString& Parameters)
 	const FName SeedReason(TEXT("Test.Seed"));
 	const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
 	const FGoodTypeId Flour = Registry.CreateGoodType(TEXT("Goods.Flour"), TEXT("Flour"));
-	const FInventoryId SourceInventory = Registry.CreateInventory();
-	const FInventoryId DestinationInventory = Registry.CreateInventory();
+	const FPhysicalSiteId SiteId = CreateTestSite(Registry);
+	const FInventoryId SourceInventory = CreateLocatedInventory(Registry, SiteId);
+	const FInventoryId DestinationInventory = CreateLocatedInventory(Registry, SiteId);
 	const TArray<FInventoryId> AllInventories = { SourceInventory, DestinationInventory };
 
 	Registry.AddGoods(SourceInventory, Wheat, 100, SeedReason);
@@ -627,8 +639,9 @@ bool FSimulationTransferRejectionTest::RunTest(const FString& Parameters)
 
 	const FName SeedReason(TEXT("Test.Seed"));
 	const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
-	const FInventoryId SourceInventory = Registry.CreateInventory();
-	const FInventoryId DestinationInventory = Registry.CreateInventory();
+	const FPhysicalSiteId SiteId = CreateTestSite(Registry);
+	const FInventoryId SourceInventory = CreateLocatedInventory(Registry, SiteId);
+	const FInventoryId DestinationInventory = CreateLocatedInventory(Registry, SiteId);
 	const TArray<FInventoryId> AllInventories = { SourceInventory, DestinationInventory };
 
 	Registry.AddGoods(SourceInventory, Wheat, 10, SeedReason);
@@ -690,7 +703,7 @@ bool FSimulationSameInventoryTransferTest::RunTest(const FString& Parameters)
 	FSimulationRegistry Registry;
 
 	const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
-	const FInventoryId InventoryId = Registry.CreateInventory();
+	const FInventoryId InventoryId = CreateLocatedInventory(Registry);
 	Registry.AddGoods(InventoryId, Wheat, 10, TEXT("Test.Seed"));
 
 	// A transfer to itself is a caller error, not a request, so it is rejected rather than
@@ -741,7 +754,7 @@ bool FSimulationGoodsAuditTest::RunTest(const FString& Parameters)
 	const FName HarvestReason(TEXT("Test.Harvest"));
 	const FName ConsumeReason(TEXT("Test.Consume"));
 	const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
-	const FInventoryId InventoryId = Registry.CreateInventory();
+	const FInventoryId InventoryId = CreateLocatedInventory(Registry);
 
 	TestEqual(TEXT("A new registry has audited nothing"), Registry.GetGoodsAuditRecordCount(), 0);
 	TestFalse(TEXT("No audit record can be read from an empty audit trail"),
@@ -826,8 +839,9 @@ bool FSimulationGoodsAuditRejectionTest::RunTest(const FString& Parameters)
 
 	const FName SeedReason(TEXT("Test.Seed"));
 	const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
-	const FInventoryId InventoryId = Registry.CreateInventory();
-	const FInventoryId OtherInventory = Registry.CreateInventory();
+	const FPhysicalSiteId SiteId = CreateTestSite(Registry);
+	const FInventoryId InventoryId = CreateLocatedInventory(Registry, SiteId);
+	const FInventoryId OtherInventory = CreateLocatedInventory(Registry, SiteId);
 
 	Registry.AddGoods(InventoryId, Wheat, 20, SeedReason);
 	const int32 AuditCountAfterSeeding = Registry.GetGoodsAuditRecordCount();
@@ -903,8 +917,9 @@ bool FSimulationGoodsAuditTransferTest::RunTest(const FString& Parameters)
 
 	const FName SeedReason(TEXT("Test.Seed"));
 	const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
-	const FInventoryId SourceInventory = Registry.CreateInventory();
-	const FInventoryId DestinationInventory = Registry.CreateInventory();
+	const FPhysicalSiteId SiteId = CreateTestSite(Registry);
+	const FInventoryId SourceInventory = CreateLocatedInventory(Registry, SiteId);
+	const FInventoryId DestinationInventory = CreateLocatedInventory(Registry, SiteId);
 	const TArray<FInventoryId> AllInventories = { SourceInventory, DestinationInventory };
 
 	Registry.AddGoods(SourceInventory, Wheat, 100, SeedReason);
@@ -961,7 +976,8 @@ bool FSimulationGoodsSnapshotRegressionTest::RunTest(const FString& Parameters)
 
 	const FName SeedReason(TEXT("Test.Seed"));
 	const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
-	const FInventoryId InventoryId = Registry.CreateInventory();
+	const FPhysicalSiteId SiteId = CreateTestSite(Registry);
+	const FInventoryId InventoryId = CreateLocatedInventory(Registry, SiteId);
 	Registry.AddGoods(InventoryId, Wheat, 30, SeedReason);
 
 	TOptional<FGoodTypeRecord> GoodTypeSnapshot = Registry.FindGoodType(Wheat);
@@ -975,7 +991,7 @@ bool FSimulationGoodsSnapshotRegressionTest::RunTest(const FString& Parameters)
 	// Grow every array the snapshots came from, which would reallocate storage and dangle
 	// any borrowed pointer, and change the snapshotted inventory's contents as well.
 	const FGoodTypeId Flour = Registry.CreateGoodType(TEXT("Goods.Flour"), TEXT("Flour"));
-	const FInventoryId OtherInventory = Registry.CreateInventory();
+	const FInventoryId OtherInventory = CreateLocatedInventory(Registry, SiteId);
 	for (int32 FillerIndex = 0; FillerIndex < 16; ++FillerIndex)
 	{
 		Registry.CreateGoodType(FName(*FString::Printf(TEXT("Goods.Filler%d"), FillerIndex)), TEXT("Filler"));
@@ -995,6 +1011,10 @@ bool FSimulationGoodsSnapshotRegressionTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("The held inventory snapshot still reports its identifier"),
 		InventorySnapshot->Id == InventoryId);
+	TestTrue(TEXT("The held inventory snapshot still reports its location kind"),
+		InventorySnapshot->Location.Kind == EInventoryLocationKind::PhysicalSite);
+	TestTrue(TEXT("The held inventory snapshot still reports its site"),
+		InventorySnapshot->Location.PhysicalSiteId == SiteId);
 	TestEqual(TEXT("The held inventory snapshot does not observe later entries"),
 		InventorySnapshot->Entries.Num(), 1);
 	TestTrue(TEXT("The held inventory snapshot still describes the good type it held"),
@@ -1012,6 +1032,7 @@ bool FSimulationGoodsSnapshotRegressionTest::RunTest(const FString& Parameters)
 	GoodTypeSnapshot->Name = TEXT("Tampered");
 	GoodTypeSnapshot->Id = FGoodTypeId(UInt32MaxIdValue);
 	InventorySnapshot->Id = FInventoryId(UInt32MaxIdValue);
+	InventorySnapshot->Location = FInventoryLocation::Nowhere();
 	InventorySnapshot->Entries.Empty();
 
 	const TOptional<FGoodTypeRecord> GoodTypeAfterTampering = Registry.FindGoodType(Wheat);
@@ -1034,6 +1055,9 @@ bool FSimulationGoodsSnapshotRegressionTest::RunTest(const FString& Parameters)
 		TEXT("Emptying a snapshot's entries does not empty the inventory"));
 	TestEqual(TEXT("The authoritative inventory still holds both entries"),
 		Registry.FindInventory(InventoryId)->Entries.Num(), 2);
+	TestTrue(TEXT("Clearing a snapshot's location does not unlocate the inventory"),
+		Registry.FindInventory(InventoryId)->Location.Kind == EInventoryLocationKind::PhysicalSite
+			&& Registry.FindInventory(InventoryId)->Location.PhysicalSiteId == SiteId);
 
 	VerifyInvariants(*this, Registry, TEXT("after snapshot activity"));
 
@@ -1074,7 +1098,7 @@ bool FSimulationGoodsInvariantDetectionTest::RunTest(const FString& Parameters)
 	{
 		FSimulationRegistry Registry;
 		const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
-		const FInventoryId InventoryId = Registry.CreateInventory();
+		const FInventoryId InventoryId = CreateLocatedInventory(Registry);
 		Registry.AddGoods(InventoryId, Wheat, 10, SeedReason);
 
 		FInventoryEntry& DuplicateEntry =
@@ -1088,7 +1112,7 @@ bool FSimulationGoodsInvariantDetectionTest::RunTest(const FString& Parameters)
 	{
 		FSimulationRegistry Registry;
 		const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
-		const FInventoryId InventoryId = Registry.CreateInventory();
+		const FInventoryId InventoryId = CreateLocatedInventory(Registry);
 		Registry.AddGoods(InventoryId, Wheat, 10, SeedReason);
 
 		FSimulationRegistryTestAccess::InventoryRecords(Registry)[0].Entries[0].GoodTypeId =
@@ -1100,7 +1124,7 @@ bool FSimulationGoodsInvariantDetectionTest::RunTest(const FString& Parameters)
 	{
 		FSimulationRegistry Registry;
 		const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
-		const FInventoryId InventoryId = Registry.CreateInventory();
+		const FInventoryId InventoryId = CreateLocatedInventory(Registry);
 		Registry.AddGoods(InventoryId, Wheat, 10, SeedReason);
 
 		FSimulationRegistryTestAccess::InventoryRecords(Registry)[0].Entries[0].Quantity = 0;
@@ -1111,7 +1135,7 @@ bool FSimulationGoodsInvariantDetectionTest::RunTest(const FString& Parameters)
 	{
 		FSimulationRegistry Registry;
 		const FGoodTypeId Wheat = Registry.CreateGoodType(TEXT("Goods.Wheat"), TEXT("Wheat"));
-		const FInventoryId InventoryId = Registry.CreateInventory();
+		const FInventoryId InventoryId = CreateLocatedInventory(Registry);
 		Registry.AddGoods(InventoryId, Wheat, 10, SeedReason);
 
 		FSimulationRegistryTestAccess::InventoryRecords(Registry)[0].Entries[0].Quantity = -5;
@@ -1142,9 +1166,8 @@ bool FSimulationHeadlessConservationScenarioTest::RunTest(const FString& Paramet
 	// Four good types and five inventories moving goods along a chain, with no Actor, no
 	// world, no map, and no production: nothing here converts one good into another.
 	//
-	// The inventory variable names below are descriptive of the eventual scenario only. No
-	// inventory is attached to a field, building, or household in this slice; they are five
-	// independent custody boundaries.
+	// The inventories sit on distinct physical sites of one property. The purpose keys are
+	// test classification only; they do not implement harvest, milling, baking, or a household.
 	FSimulationRegistry Registry;
 
 	const FName SeedReason(TEXT("Test.ScenarioSeed"));
@@ -1154,11 +1177,24 @@ bool FSimulationHeadlessConservationScenarioTest::RunTest(const FString& Paramet
 	const FGoodTypeId Firewood = Registry.CreateGoodType(TEXT("Goods.Firewood"), TEXT("Firewood"));
 	const TArray<FGoodTypeId> AllGoodTypes = { Wheat, Flour, Bread, Firewood };
 
-	const FInventoryId HarvestInventory = Registry.CreateInventory();
-	const FInventoryId StorageInventory = Registry.CreateInventory();
-	const FInventoryId MillInventory = Registry.CreateInventory();
-	const FInventoryId BakeryInventory = Registry.CreateInventory();
-	const FInventoryId HouseholdInventory = Registry.CreateInventory();
+	const FSettlementId SettlementId = Registry.CreateSettlement(TEXT("Eichenfurt"));
+	const FPropertyId PropertyId = Registry.CreateProperty(SettlementId);
+	const FPhysicalSiteId HarvestSite =
+		Registry.CreatePhysicalSite(PropertyId, TEXT("Test.HarvestPoint"), TEXT("Harvest point"));
+	const FPhysicalSiteId StorageSite =
+		Registry.CreatePhysicalSite(PropertyId, TEXT("Test.Storage"), TEXT("Storage"));
+	const FPhysicalSiteId MillSite =
+		Registry.CreatePhysicalSite(PropertyId, TEXT("Test.MillStorage"), TEXT("Mill storage"));
+	const FPhysicalSiteId BakerySite =
+		Registry.CreatePhysicalSite(PropertyId, TEXT("Test.BakeryStorage"), TEXT("Bakery storage"));
+	const FPhysicalSiteId HouseholdSite =
+		Registry.CreatePhysicalSite(PropertyId, TEXT("Test.HouseholdStorage"), TEXT("Household storage"));
+
+	const FInventoryId HarvestInventory = CreateLocatedInventory(Registry, HarvestSite);
+	const FInventoryId StorageInventory = CreateLocatedInventory(Registry, StorageSite);
+	const FInventoryId MillInventory = CreateLocatedInventory(Registry, MillSite);
+	const FInventoryId BakeryInventory = CreateLocatedInventory(Registry, BakerySite);
+	const FInventoryId HouseholdInventory = CreateLocatedInventory(Registry, HouseholdSite);
 	const TArray<FInventoryId> AllInventories = {
 		HarvestInventory, StorageInventory, MillInventory, BakeryInventory, HouseholdInventory };
 

@@ -169,6 +169,40 @@ FPropertyId FSimulationRegistry::CreateProperty(FSettlementId SettlementId)
 	return NewPropertyId;
 }
 
+FPhysicalSiteId FSimulationRegistry::CreatePhysicalSite(
+	FPropertyId PropertyId, FName PurposeKey, const FString& DisplayName)
+{
+	// Validated before storage is touched, so a site can never reference a property that does
+	// not exist, and a rejected creation consumes no identifier. The display name is not
+	// validated, as nowhere else in the registry validates display data.
+	if (!ContainsProperty(PropertyId))
+	{
+		return FPhysicalSiteId();
+	}
+
+	if (PurposeKey.IsNone())
+	{
+		return FPhysicalSiteId();
+	}
+
+	const int32 RecordIndex = PhysicalSiteRecords.AddDefaulted();
+
+	FPhysicalSiteRecord& PhysicalSiteRecord = PhysicalSiteRecords[RecordIndex];
+	PhysicalSiteRecord.Id = FromRecordIndex<FPhysicalSiteId>(RecordIndex);
+	PhysicalSiteRecord.PropertyId = PropertyId;
+	PhysicalSiteRecord.PurposeKey = PurposeKey;
+	PhysicalSiteRecord.DisplayName = DisplayName;
+
+	const FPhysicalSiteId NewPhysicalSiteId = PhysicalSiteRecord.Id;
+
+	FPropertyRecord* PropertyRecord = ResolvePropertyMutable(PropertyId);
+	checkf(PropertyRecord != nullptr, TEXT("%s resolved before the site was created but not after."),
+		*PropertyId.ToString());
+	PropertyRecord->PhysicalSites.Add(NewPhysicalSiteId);
+
+	return NewPhysicalSiteId;
+}
+
 FGoodTypeId FSimulationRegistry::CreateGoodType(FName AuthoredKey, const FString& DisplayName)
 {
 	// Validated before anything is stored, so a rejected definition consumes no runtime
@@ -199,6 +233,7 @@ FInventoryId FSimulationRegistry::CreateInventory()
 
 	FInventoryRecord& InventoryRecord = InventoryRecords[RecordIndex];
 	InventoryRecord.Id = FromRecordIndex<FInventoryId>(RecordIndex);
+	InventoryRecord.Location = FInventoryLocation::Nowhere();
 
 	return InventoryRecord.Id;
 }
@@ -221,6 +256,11 @@ bool FSimulationRegistry::ContainsSettlement(FSettlementId SettlementId) const
 bool FSimulationRegistry::ContainsProperty(FPropertyId PropertyId) const
 {
 	return ResolveProperty(PropertyId) != nullptr;
+}
+
+bool FSimulationRegistry::ContainsPhysicalSite(FPhysicalSiteId PhysicalSiteId) const
+{
+	return ResolvePhysicalSite(PhysicalSiteId) != nullptr;
 }
 
 bool FSimulationRegistry::ContainsGoodType(FGoodTypeId GoodTypeId) const
@@ -271,6 +311,16 @@ TOptional<FPropertyRecord> FSimulationRegistry::FindProperty(FPropertyId Propert
 	}
 
 	return TOptional<FPropertyRecord>();
+}
+
+TOptional<FPhysicalSiteRecord> FSimulationRegistry::FindPhysicalSite(FPhysicalSiteId PhysicalSiteId) const
+{
+	if (const FPhysicalSiteRecord* PhysicalSiteRecord = ResolvePhysicalSite(PhysicalSiteId))
+	{
+		return TOptional<FPhysicalSiteRecord>(*PhysicalSiteRecord);
+	}
+
+	return TOptional<FPhysicalSiteRecord>();
 }
 
 TOptional<FGoodTypeRecord> FSimulationRegistry::FindGoodType(FGoodTypeId GoodTypeId) const
@@ -493,6 +543,60 @@ EResidenceResult FSimulationRegistry::RemoveHouseholdResidence(FHouseholdId Hous
 	return EResidenceResult::Success;
 }
 
+EInventoryLocationResult FSimulationRegistry::AssignInventoryToSite(
+	FInventoryId InventoryId, FPhysicalSiteId PhysicalSiteId)
+{
+	FInventoryRecord* InventoryRecord = ResolveInventoryMutable(InventoryId);
+	if (InventoryRecord == nullptr)
+	{
+		return EInventoryLocationResult::UnknownInventory;
+	}
+
+	if (!ContainsPhysicalSite(PhysicalSiteId))
+	{
+		return EInventoryLocationResult::UnknownSite;
+	}
+
+	const FInventoryLocation& CurrentLocation = InventoryRecord->Location;
+	if (CurrentLocation.Kind == EInventoryLocationKind::PhysicalSite
+		&& CurrentLocation.PhysicalSiteId == PhysicalSiteId)
+	{
+		return EInventoryLocationResult::AlreadyAtSite;
+	}
+
+	// Whatever the inventory holds comes with it: the goods were in the inventory, and the
+	// inventory is now somewhere else. Nothing is created, destroyed, or left behind, so a
+	// populated inventory relocates as freely as an empty one.
+	SetInventoryLocation(*InventoryRecord, FInventoryLocation::AtPhysicalSite(PhysicalSiteId));
+
+	return EInventoryLocationResult::Success;
+}
+
+EInventoryLocationResult FSimulationRegistry::RemoveInventoryLocation(FInventoryId InventoryId)
+{
+	FInventoryRecord* InventoryRecord = ResolveInventoryMutable(InventoryId);
+	if (InventoryRecord == nullptr)
+	{
+		return EInventoryLocationResult::UnknownInventory;
+	}
+
+	if (!InventoryRecord->Location.IsLocated())
+	{
+		return EInventoryLocationResult::NotLocated;
+	}
+
+	// Goods may not be left without a place, so the only way to move a populated inventory is
+	// to another site. Emptying it first is the caller's other option.
+	if (InventoryRecord->Entries.Num() > 0)
+	{
+		return EInventoryLocationResult::InventoryNotEmpty;
+	}
+
+	SetInventoryLocation(*InventoryRecord, FInventoryLocation::Nowhere());
+
+	return EInventoryLocationResult::Success;
+}
+
 void FSimulationRegistry::ApplyGoodsAddition(
 	FInventoryRecord& InventoryRecord, FGoodTypeId GoodTypeId, int32 Quantity)
 {
@@ -584,6 +688,13 @@ EAddGoodsResult FSimulationRegistry::AddGoods(
 		return EAddGoodsResult::InvalidReason;
 	}
 
+	// Nor may it come into existence nowhere. No site is created or assigned to rescue the
+	// call: an inventory with no place is a construction step the caller has not finished.
+	if (!IsInventoryLocated(*InventoryRecord))
+	{
+		return EAddGoodsResult::InventoryNotLocated;
+	}
+
 	const int32 ExistingQuantity = GetEntryQuantity(InventoryRecord->Entries, GoodTypeId);
 	if (WouldExceedMaxQuantity(ExistingQuantity, Quantity))
 	{
@@ -670,6 +781,18 @@ ETransferGoodsResult FSimulationRegistry::TransferGoods(
 		return ETransferGoodsResult::SameInventory;
 	}
 
+	// Goods move from a place to a place. Both ends are checked before the quantity ones, so
+	// a caller whose inventory has no place hears that rather than being told it is empty.
+	if (!IsInventoryLocated(*SourceRecord))
+	{
+		return ETransferGoodsResult::SourceInventoryNotLocated;
+	}
+
+	if (!IsInventoryLocated(*DestinationRecord))
+	{
+		return ETransferGoodsResult::DestinationInventoryNotLocated;
+	}
+
 	if (GetEntryQuantity(SourceRecord->Entries, GoodTypeId) < Quantity)
 	{
 		return ETransferGoodsResult::InsufficientQuantity;
@@ -702,6 +825,7 @@ bool FSimulationRegistry::ValidateInvariants(FString& OutFailureDescription) con
 		&& ValidateHouseholdRecords(OutFailureDescription)
 		&& ValidateSettlementRecords(OutFailureDescription)
 		&& ValidatePropertyRecords(OutFailureDescription)
+		&& ValidatePhysicalSiteRecords(OutFailureDescription)
 		&& ValidateGoodTypeRecords(OutFailureDescription)
 		&& ValidateInventoryRecords(OutFailureDescription);
 }
@@ -962,6 +1086,36 @@ bool FSimulationRegistry::ValidatePropertyRecords(FString& OutFailureDescription
 			return false;
 		}
 
+		FPhysicalSiteId DuplicateSiteId;
+		if (TryFindDuplicate(PropertyRecord.PhysicalSites, DuplicateSiteId))
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("%s lists %s more than once."),
+				*PropertyRecord.Id.ToString(), *DuplicateSiteId.ToString());
+			return false;
+		}
+
+		for (const FPhysicalSiteId PhysicalSiteId : PropertyRecord.PhysicalSites)
+		{
+			const FPhysicalSiteRecord* PhysicalSiteRecord = ResolvePhysicalSite(PhysicalSiteId);
+			if (PhysicalSiteRecord == nullptr)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s lists unresolvable %s."),
+					*PropertyRecord.Id.ToString(), *PhysicalSiteId.ToString());
+				return false;
+			}
+
+			if (PhysicalSiteRecord->PropertyId != PropertyRecord.Id)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s lists %s, but that site belongs to %s."),
+					*PropertyRecord.Id.ToString(), *PhysicalSiteId.ToString(),
+					*PhysicalSiteRecord->PropertyId.ToString());
+				return false;
+			}
+		}
+
 		if (!PropertyRecord.ResidentHouseholdId.IsValid())
 		{
 			continue;
@@ -983,6 +1137,82 @@ bool FSimulationRegistry::ValidatePropertyRecords(FString& OutFailureDescription
 				*PropertyRecord.Id.ToString(), *PropertyRecord.ResidentHouseholdId.ToString(),
 				*HouseholdRecord->ResidenceId.ToString());
 			return false;
+		}
+	}
+
+	return true;
+}
+
+bool FSimulationRegistry::ValidatePhysicalSiteRecords(FString& OutFailureDescription) const
+{
+	for (int32 RecordIndex = 0; RecordIndex < PhysicalSiteRecords.Num(); ++RecordIndex)
+	{
+		const FPhysicalSiteRecord& PhysicalSiteRecord = PhysicalSiteRecords[RecordIndex];
+
+		if (ToRecordIndex(PhysicalSiteRecord.Id, PhysicalSiteRecords.Num()) != RecordIndex)
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Physical site slot %d holds identifier %s."),
+				RecordIndex, *PhysicalSiteRecord.Id.ToString());
+			return false;
+		}
+
+		if (PhysicalSiteRecord.PurposeKey.IsNone())
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("%s has no purpose key."), *PhysicalSiteRecord.Id.ToString());
+			return false;
+		}
+
+		const FPropertyRecord* PropertyRecord = ResolveProperty(PhysicalSiteRecord.PropertyId);
+		if (PropertyRecord == nullptr)
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("%s belongs to unresolvable %s."),
+				*PhysicalSiteRecord.Id.ToString(), *PhysicalSiteRecord.PropertyId.ToString());
+			return false;
+		}
+
+		const int32 ListedCount = CountOccurrences(PropertyRecord->PhysicalSites, PhysicalSiteRecord.Id);
+		if (ListedCount != 1)
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("%s belongs to %s but appears in its site list %d times."),
+				*PhysicalSiteRecord.Id.ToString(), *PhysicalSiteRecord.PropertyId.ToString(), ListedCount);
+			return false;
+		}
+
+		FInventoryId DuplicateInventoryId;
+		if (TryFindDuplicate(PhysicalSiteRecord.Inventories, DuplicateInventoryId))
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("%s lists %s more than once."),
+				*PhysicalSiteRecord.Id.ToString(), *DuplicateInventoryId.ToString());
+			return false;
+		}
+
+		for (const FInventoryId InventoryId : PhysicalSiteRecord.Inventories)
+		{
+			const FInventoryRecord* InventoryRecord = ResolveInventory(InventoryId);
+			if (InventoryRecord == nullptr)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s lists unresolvable %s."),
+					*PhysicalSiteRecord.Id.ToString(), *InventoryId.ToString());
+				return false;
+			}
+
+			// An inventory names only one site, so this is also what catches the same
+			// inventory being listed by two of them: at most one of the two can agree.
+			const FInventoryLocation& Location = InventoryRecord->Location;
+			if (Location.Kind != EInventoryLocationKind::PhysicalSite
+				|| Location.PhysicalSiteId != PhysicalSiteRecord.Id)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s lists %s, but that inventory is not located there."),
+					*PhysicalSiteRecord.Id.ToString(), *InventoryId.ToString());
+				return false;
+			}
 		}
 	}
 
@@ -1036,6 +1266,55 @@ bool FSimulationRegistry::ValidateInventoryRecords(FString& OutFailureDescriptio
 		{
 			OutFailureDescription = FString::Printf(
 				TEXT("Inventory slot %d holds identifier %s."), RecordIndex, *InventoryRecord.Id.ToString());
+			return false;
+		}
+
+		const FInventoryLocation& Location = InventoryRecord.Location;
+		if (Location.Kind == EInventoryLocationKind::None)
+		{
+			// The tag and its payload must agree, or the location says two things at once.
+			if (Location.PhysicalSiteId.IsValid())
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s is nowhere but names %s."),
+					*InventoryRecord.Id.ToString(), *Location.PhysicalSiteId.ToString());
+				return false;
+			}
+
+			// The rule the whole slice exists for: goods are never placeless.
+			if (InventoryRecord.Entries.Num() > 0)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s holds %d good type(s) but is nowhere."),
+					*InventoryRecord.Id.ToString(), InventoryRecord.Entries.Num());
+				return false;
+			}
+		}
+		else if (Location.Kind == EInventoryLocationKind::PhysicalSite)
+		{
+			const FPhysicalSiteRecord* PhysicalSiteRecord = ResolvePhysicalSite(Location.PhysicalSiteId);
+			if (PhysicalSiteRecord == nullptr)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s is located at unresolvable %s."),
+					*InventoryRecord.Id.ToString(), *Location.PhysicalSiteId.ToString());
+				return false;
+			}
+
+			const int32 ListedCount = CountOccurrences(PhysicalSiteRecord->Inventories, InventoryRecord.Id);
+			if (ListedCount != 1)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s is located at %s but appears in its inventory list %d times."),
+					*InventoryRecord.Id.ToString(), *Location.PhysicalSiteId.ToString(), ListedCount);
+				return false;
+			}
+		}
+		else
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("%s has unsupported location kind %u."),
+				*InventoryRecord.Id.ToString(), static_cast<uint32>(Location.Kind));
 			return false;
 		}
 
@@ -1101,6 +1380,12 @@ const FPropertyRecord* FSimulationRegistry::ResolveProperty(FPropertyId Property
 	return RecordIndex == INDEX_NONE ? nullptr : &PropertyRecords[RecordIndex];
 }
 
+const FPhysicalSiteRecord* FSimulationRegistry::ResolvePhysicalSite(FPhysicalSiteId PhysicalSiteId) const
+{
+	const int32 RecordIndex = ToRecordIndex(PhysicalSiteId, PhysicalSiteRecords.Num());
+	return RecordIndex == INDEX_NONE ? nullptr : &PhysicalSiteRecords[RecordIndex];
+}
+
 const FGoodTypeRecord* FSimulationRegistry::ResolveGoodType(FGoodTypeId GoodTypeId) const
 {
 	const int32 RecordIndex = ToRecordIndex(GoodTypeId, GoodTypeRecords.Num());
@@ -1133,9 +1418,22 @@ FPropertyRecord* FSimulationRegistry::ResolvePropertyMutable(FPropertyId Propert
 	return const_cast<FPropertyRecord*>(ResolveProperty(PropertyId));
 }
 
+FPhysicalSiteRecord* FSimulationRegistry::ResolvePhysicalSiteMutable(FPhysicalSiteId PhysicalSiteId)
+{
+	return const_cast<FPhysicalSiteRecord*>(ResolvePhysicalSite(PhysicalSiteId));
+}
+
 FInventoryRecord* FSimulationRegistry::ResolveInventoryMutable(FInventoryId InventoryId)
 {
 	return const_cast<FInventoryRecord*>(ResolveInventory(InventoryId));
+}
+
+bool FSimulationRegistry::IsInventoryLocated(const FInventoryRecord& InventoryRecord) const
+{
+	const FInventoryLocation& Location = InventoryRecord.Location;
+
+	return Location.Kind == EInventoryLocationKind::PhysicalSite
+		&& ContainsPhysicalSite(Location.PhysicalSiteId);
 }
 
 void FSimulationRegistry::SetPersonHousehold(FPersonRecord& PersonRecord, FHouseholdId NewHouseholdId)
@@ -1208,5 +1506,38 @@ void FSimulationRegistry::SetHouseholdResidence(FHouseholdRecord& HouseholdRecor
 			*HouseholdRecord.Id.ToString());
 
 		NewProperty->ResidentHouseholdId = HouseholdRecord.Id;
+	}
+}
+
+void FSimulationRegistry::SetInventoryLocation(
+	FInventoryRecord& InventoryRecord, FInventoryLocation NewLocation)
+{
+	const FInventoryLocation& CurrentLocation = InventoryRecord.Location;
+	if (CurrentLocation.Kind == NewLocation.Kind
+		&& CurrentLocation.PhysicalSiteId == NewLocation.PhysicalSiteId)
+	{
+		return;
+	}
+
+	if (CurrentLocation.Kind == EInventoryLocationKind::PhysicalSite)
+	{
+		if (FPhysicalSiteRecord* PreviousSite = ResolvePhysicalSiteMutable(CurrentLocation.PhysicalSiteId))
+		{
+			PreviousSite->Inventories.RemoveSingle(InventoryRecord.Id);
+		}
+	}
+
+	InventoryRecord.Location = NewLocation;
+
+	if (NewLocation.Kind == EInventoryLocationKind::PhysicalSite)
+	{
+		if (FPhysicalSiteRecord* NewSite = ResolvePhysicalSiteMutable(NewLocation.PhysicalSiteId))
+		{
+			checkf(!NewSite->Inventories.Contains(InventoryRecord.Id),
+				TEXT("%s was already listed by %s before being placed there."),
+				*InventoryRecord.Id.ToString(), *NewLocation.PhysicalSiteId.ToString());
+
+			NewSite->Inventories.Add(InventoryRecord.Id);
+		}
 	}
 }

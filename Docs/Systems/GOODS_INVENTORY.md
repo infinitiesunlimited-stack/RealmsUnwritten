@@ -5,13 +5,14 @@
 - **Role:** Implementation record for the Prototype 0.1C goods and inventory foundation
 - **Authority:** Subordinate to `DESIGN_CONSTITUTION.md`, `HIGH_LEVEL_ARCHITECTURE.md`, `DATA_MODEL_OVERVIEW.md`, and `PROTOTYPE_0_1_SCOPE.md`
 - **Extends:** `SIMULATION_FOUNDATION.md` (0.1A) and `SETTLEMENT_PROPERTY_RESIDENCE.md` (0.1B), neither of which is superseded
+- **Extended by:** `PHYSICAL_SITE_INVENTORY_LOCATION.md` (Prototype 0.1D), which locates inventories at physical sites and retires the holderless-inventory waiver
 - **Scope:** Good types, inventories, quantities, conserved transfer, and the goods audit trail
 - **Describes:** Only what exists in the repository today
-- **Revision:** Updated after the independent Prototype 0.1C review and the resulting architectural decisions: good type identity was split into a durable authored key and a runtime handle, creation and destruction of goods became auditable, and the holderless inventory exception became an approved time-bounded waiver
+- **Revision:** Updated after Prototype 0.1D: inventories carry an explicit location; `AddGoods` and `TransferGoods` require a resolvable physical site; the 0.1C holderless-inventory waiver is retired
 
 ## Purpose
 
-This slice begins `PROTOTYPE_0_1_SCOPE.md` step 3 ("goods and custody") by giving physical goods somewhere to be. It implements the state layer behind the `GAME_VISION.md` principle that goods have a place and a path — the *place*, not yet the path.
+This slice begins `PROTOTYPE_0_1_SCOPE.md` step 3 ("goods and custody") by giving physical goods somewhere to be. It implements the state layer behind the `GAME_VISION.md` principle that goods have a place and a path — originally the custody half of that place. Prototype 0.1D supplies the location half: an inventory holding goods must sit at a physical site. See `PHYSICAL_SITE_INVENTORY_LOCATION.md`.
 
 It answers four questions, all by stable identifier, with no world, Actor, or map involved:
 
@@ -62,14 +63,7 @@ using FInventoryId = TSimulationId<FInventoryIdTag>;
 
 They inherit every property documented in 0.1A: phantom-typed, `explicit` raw-value construction that grants no capability, value `0` meaning "no entity", allocation by the registry only, hashable, and never a name. `ToString` yields `GoodType#3` / `Inventory#7`.
 
-Type safety needed no new mechanism. The accepted `TMutuallyDistinct` predicate covers the two new families by being handed a longer list, and one assertion still proves all fifteen pairs are mutually non-interchangeable in both directions:
-
-```cpp
-static_assert(
-    SimulationIdContract::TMutuallyDistinct<
-        FPersonId, FHouseholdId, FSettlementId, FPropertyId, FGoodTypeId, FInventoryId>::value,
-    "Simulation identifier families must never be interchangeable with one another.");
-```
+Type safety needed no new mechanism. The accepted `TMutuallyDistinct` predicate covers later families by being handed a longer list. Prototype 0.1D currently asserts seven families including `FPhysicalSiteId`.
 
 ### Good type identity: durable key, runtime handle
 
@@ -127,6 +121,7 @@ No other field is required by anything in this slice, so none was added. The dat
 | Field | Type | Justification |
 |---|---|---|
 | `Id` | `FInventoryId` | Stable identity. Data model "stable inventory ID". |
+| `Location` | `FInventoryLocation` | Added by Prototype 0.1D. `None` or `PhysicalSite`. Populated inventories must be located. See `PHYSICAL_SITE_INVENTORY_LOCATION.md`. |
 | `Entries` | `TArray<FInventoryEntry>` | Data model "contained lot references **or equivalent compact lot records**". |
 
 `FInventoryEntry` is a `FGoodTypeId` and an `int32` quantity. An entry exists only while the inventory holds a positive amount of that good type.
@@ -159,20 +154,21 @@ Stored quantities are always strictly positive. Zero is not stored: reaching zer
 
 ## Registry operations
 
-`FSimulationRegistry` was extended, not replaced, and now owns six entity families:
+`FSimulationRegistry` was extended, not replaced, and as of Prototype 0.1D owns seven entity families. Physical site storage is documented in `PHYSICAL_SITE_INVENTORY_LOCATION.md`.
 
 ```cpp
 TArray<FPersonRecord>     PersonRecords;
 TArray<FHouseholdRecord>  HouseholdRecords;
 TArray<FSettlementRecord> SettlementRecords;
-TArray<FPropertyRecord>   PropertyRecords;
-TArray<FGoodTypeRecord>   GoodTypeRecords;
+TArray<FPropertyRecord>     PropertyRecords;
+TArray<FPhysicalSiteRecord> PhysicalSiteRecords;
+TArray<FGoodTypeRecord>     GoodTypeRecords;
 TArray<FInventoryRecord>  InventoryRecords;
 
 TArray<FGoodsAuditRecord> GoodsAuditRecords;  // diagnostic, not an entity family
 ```
 
-Every accepted principle is preserved: one dense array per family, identifier value equals slot plus one, the same unsigned-before-narrowing range check resolves all six identifier types, lookup is a range check plus an index read, no Actor dependency, no `UObject` per entity, no per-entity tick, no world scans, no stored totals, and no public pointer or mutable reference into storage.
+Every accepted principle is preserved: one dense array per family, identifier value equals slot plus one, the same unsigned-before-narrowing range check resolves all identifier types, lookup is a range check plus an index read, no Actor dependency, no `UObject` per entity, no per-entity tick, no world scans, no stored totals, and no public pointer or mutable reference into storage.
 
 ```cpp
 FGoodTypeId  CreateGoodType(FName AuthoredKey, const FString& DisplayName);
@@ -198,11 +194,11 @@ int32 GetGoodsAuditRecordCount() const;
 TOptional<FGoodsAuditRecord> GetGoodsAuditRecord(int32 RecordIndex) const;  // snapshot copy
 ```
 
-`CreateGoodType` now requires the authored key, and `AddGoods` and `RemoveGoods` now require a reason. `TransferGoods` deliberately did not change: it neither needs an authored key nor creates anything to explain.
+`CreateGoodType` now requires the authored key, and `AddGoods` and `RemoveGoods` now require a reason. Prototype 0.1D additionally requires a resolvable physical location for successful `AddGoods` and for both ends of a successful `TransferGoods`. Transfers still neither take a reason nor append an audit record.
 
 `ValidateInvariants` keeps its signature. No 0.1A or 0.1B operation changed name, signature, or behaviour.
 
-`CreateInventory` takes nothing at all and cannot fail, because an inventory has no holder in this slice. `CreateGoodType` can fail, and does so the way 0.1B's `CreateProperty` does: it returns an invalid handle, having stored nothing.
+`CreateInventory` still takes nothing and cannot fail: it creates an empty inventory located nowhere. Location is assigned afterwards. `CreateGoodType` can fail, and does so the way 0.1B's `CreateProperty` does: it returns an invalid handle, having stored nothing.
 
 ### Good type creation and resolution
 
@@ -224,9 +220,9 @@ Three operation-specific enums, following the accepted style in which rejections
 
 | Enum | Values |
 |---|---|
-| `EAddGoodsResult` | `Success`, `UnknownInventory`, `UnknownGoodType`, `InvalidQuantity`, `InvalidReason`, `Overflow` |
+| `EAddGoodsResult` | `Success`, `UnknownInventory`, `UnknownGoodType`, `InvalidQuantity`, `InvalidReason`, `InventoryNotLocated`, `Overflow` |
 | `ERemoveGoodsResult` | `Success`, `UnknownInventory`, `UnknownGoodType`, `InvalidQuantity`, `InvalidReason`, `InsufficientQuantity` |
-| `ETransferGoodsResult` | `Success`, `UnknownSourceInventory`, `UnknownDestinationInventory`, `UnknownGoodType`, `InvalidQuantity`, `SameInventory`, `InsufficientQuantity`, `Overflow` |
+| `ETransferGoodsResult` | `Success`, `UnknownSourceInventory`, `UnknownDestinationInventory`, `UnknownGoodType`, `InvalidQuantity`, `SameInventory`, `SourceInventoryNotLocated`, `DestinationInventoryNotLocated`, `InsufficientQuantity`, `Overflow` |
 
 Each enum contains exactly the outcomes its own operation can produce, so a caller's `switch` has no unreachable cases: adding cannot be insufficient, removing cannot overflow, transfer has no reason to reject, and only transfer has two inventories to confuse. Transfer distinguishes an unknown *source* from an unknown *destination*, because "which end was wrong" is the first thing a caller needs to know.
 
@@ -234,7 +230,7 @@ Naming follows the accepted convention: `Unknown*` when an identifier does not r
 
 ## Add and remove semantics
 
-`AddGoods` requires a resolvable inventory, a resolvable good type, a strictly positive quantity, a reason, and enough headroom below `MaxGoodQuantity`. It creates the entry when the inventory held none of that good, and accumulates into the existing entry otherwise — never creating a second entry for the same good type.
+`AddGoods` requires a resolvable inventory, a resolvable good type, a strictly positive quantity, a reason, a resolvable physical location, and enough headroom below `MaxGoodQuantity`. An unlocated inventory is rejected with `InventoryNotLocated`: no goods are created, no site is auto-assigned, and no audit record is appended. It creates the entry when the inventory held none of that good, and accumulates into the existing entry otherwise — never creating a second entry for the same good type.
 
 `RemoveGoods` requires a resolvable inventory, a resolvable good type, a strictly positive quantity, a reason, and a holding of at least that much. An inventory holding none of a good type has no entry at all, which is reported as `InsufficientQuantity` rather than as a separate "no entry" outcome, because the caller's situation is identical. When the remaining quantity reaches zero the entry is removed rather than stored as a zero.
 
@@ -313,10 +309,14 @@ Deliberately absent: filtering, querying by inventory or good type, aggregation,
 3. good type resolves, else `UnknownGoodType`
 4. quantity is strictly positive, else `InvalidQuantity`
 5. the two inventories differ, else `SameInventory`
-6. the source holds at least the quantity, else `InsufficientQuantity`
-7. the destination has headroom below `MaxGoodQuantity`, else `Overflow`
+6. the source is located, else `SourceInventoryNotLocated`
+7. the destination is located, else `DestinationInventoryNotLocated`
+8. the source holds at least the quantity, else `InsufficientQuantity`
+9. the destination has headroom below `MaxGoodQuantity`, else `Overflow`
 
-The order is part of the contract and is tested. Identifier and value validation precede the structural check, and the structural check precedes the state-dependent checks — so a same-inventory transfer of an unknown good type reports the unknown good type, while a same-inventory transfer that *would also* have been insufficient reports `SameInventory`. A caller learns about the thing it can fix first.
+The order is part of the contract and is tested. Identifier and value validation precede the structural check, location precedes the quantity checks, and the structural check precedes the state-dependent checks — so a same-inventory transfer of an unknown good type reports the unknown good type, while a same-inventory transfer that *would also* have been insufficient reports `SameInventory`. A caller learns about the thing it can fix first.
+
+`TransferGoods` is not transportation. Prototype 0.1D records that distinction in `PHYSICAL_SITE_INVENTORY_LOCATION.md`: this operation moves quantity between two custody boundaries without simulating a journey.
 
 ### The internal mutation boundary
 
@@ -332,7 +332,7 @@ TransferGoods  = validate + ApplyGoodsRemoval  + ApplyGoodsAddition   (no audit)
 
 The primitives express *movement of quantity into or out of one inventory*, which is creation, destruction, or half a transfer depending entirely on who calls them. Their callers decide which it was. They assume every precondition has already been validated, assert it, take no reason, and **cannot fail** — which is precisely what makes a transfer's two halves safe to apply in sequence.
 
-Transfer atomicity after the restructuring rests on three facts: all seven conditions are checked before the first write; the primitives have no failure path, so neither can refuse after the other has run; and the inventories are provably distinct by step 5, so applying one cannot invalidate the other's precondition. Each record is resolved immediately before its own mutation, so no address is held across a write. A failed transfer leaves **both** inventories untouched, because nothing is written until the last check passes.
+Transfer atomicity after the restructuring rests on three facts: all conditions are checked before the first write; the primitives have no failure path, so neither can refuse after the other has run; and the inventories are provably distinct by step 5, so applying one cannot invalidate the other's precondition. Each record is resolved immediately before its own mutation, so no address is held across a write. A failed transfer leaves **both** inventories untouched, because nothing is written until the last check passes.
 
 Keeping the entry-creation and zero-entry-removal rules inside the two primitives also means the halves of a transfer cannot drift from the semantics of a direct add or remove — the benefit the old delegation had, kept without the coupling. This is a deliberately small change: no transaction framework, no journal, no rollback, two private functions.
 
@@ -371,6 +371,8 @@ Conservation is a property of transfer only. `AddGoods` and `RemoveGoods` intent
 - an entry whose good type does not resolve,
 - a stored quantity of zero or less.
 
+Prototype 0.1D extends this list with physical-site and inventory-location checks, documented in `PHYSICAL_SITE_INVENTORY_LOCATION.md`. The checks above remain in force.
+
 The two authored-key checks came with the identity split: a definition identity that is missing or ambiguous is exactly as broken as a mismatched slot, and a duplicate key would make `FindGoodTypeIdByKey` return whichever record came first. Duplicate keys are compared against earlier slots only, so the first duplicate is reported once rather than twice.
 
 On quantities "outside the valid representation": quantities are `int32` and the per-entry maximum *is* that type's maximum, so every value a record can physically store is representable, and the only invalid range is zero and below — which the check above covers exactly. There is no reachable upper-bound violation to detect, because the mutation operations refuse to create one.
@@ -387,7 +389,7 @@ An invariant checker that has never failed is an untested branch. The public ope
 #endif
 ```
 
-`FSimulationRegistryTestAccess` is defined in the goods test file alone, exposes two static accessors for the good type and inventory arrays, and is compiled out of shipping builds. It adds no production mutation path — the alternative would have been a public API for corrupting the registry, which is precisely what should not exist. `Goods.InvariantDetection` then corrupts a fresh registry per case and asserts that validation fails *and* describes what it found.
+`FSimulationRegistryTestAccess` is a test-only friend, declared in `Private/Tests/SimulationRegistryTestAccess.h`, compiled out of shipping builds. It adds no production mutation path — the alternative would have been a public API for corrupting the registry, which is precisely what should not exist. `Goods.InvariantDetection` then corrupts a fresh registry per case and asserts that validation fails *and* describes what it found.
 
 ## Snapshot and read contract
 
@@ -402,7 +404,7 @@ That distinction is the point. "No such inventory" and "none in stock" are diffe
 
 ## Tests
 
-`Private/Tests/GoodsInventoryTests.cpp`, guarded by `WITH_DEV_AUTOMATION_TESTS`. Fifteen automation tests, alongside the eighteen accepted 0.1A and 0.1B tests, for **33 tests under `RealmsUnwritten.Simulation`**.
+`Private/Tests/GoodsInventoryTests.cpp`, guarded by `WITH_DEV_AUTOMATION_TESTS`. Fifteen automation tests. After Prototype 0.1D they construct a Settlement → Property → PhysicalSite chain before populating any inventory. Empty-inventory creation tests may leave the inventory unlocated.
 
 | Test | Covers |
 |---|---|
@@ -445,24 +447,21 @@ UnrealEditor-Cmd.exe "<repo>\RealmsUnwritten.uproject" ^
   -unattended -nopause -nosplash -nullrhi -NoSound -log
 ```
 
-Result: **33 succeeded, 0 failed, 0 with warnings**, `EXIT CODE: 0`.
+Result: **33 succeeded, 0 failed, 0 with warnings**, `EXIT CODE: 0`, at acceptance of 0.1C. Prototype 0.1D migrated these tests onto located inventories and added further tests under `RealmsUnwritten.Simulation`.
 
 ## Labeled prototype exceptions
 
-`DESIGN_CONSTITUTION.md` requires a prototype simplification to state what is simplified, why, which constitutional behaviour stays protected, what triggers replacement, and how the prototype data avoids blocking the future model. This slice has three.
+`DESIGN_CONSTITUTION.md` requires a prototype simplification to state what is simplified, why, which constitutional behaviour stays protected, what triggers replacement, and how the prototype data avoids blocking the future model. Prototype 0.1C originally recorded three such exceptions. Prototype 0.1D retired the holderless-inventory waiver; two exceptions remain active. The retired waiver is kept below as historical context and does not permit holderless populated inventories.
 
-### 1. Inventories have no holder or location — approved waiver
+### 1. Inventories have no holder or location — waiver retired by Prototype 0.1D
 
-This is no longer merely a recorded simplification. The following waiver was explicitly approved for Prototype 0.1C:
+The following waiver was explicitly approved for Prototype 0.1C:
 
 > "Prototype 0.1C may contain holderless inventories solely as a headless foundation and test abstraction. This exception expires before any inventory participates in gameplay, production, harvesting, consumption, hauling, markets, trade, or other physical world simulation. Inventory holder/location semantics must be resolved before such integration."
 
-- **Constitutional rule affected:** DC-04, "physical goods MUST have quantities, locations, and custody", and with it the data model's description of an inventory as "an authoritative container/custody boundary attached to a valid holder or site". Quantities and custody are satisfied; **location is not**, because the custody boundary itself has no place. Integrity rule 2 (every good in exactly one valid custody state) is satisfied.
-- **Reason for the temporary exception:** None of the eventual holders exists. Buildings, fields, vehicles, and markets are unbuilt, so attaching inventories to `FPropertyId` or `FHouseholdId` today would choose a holder model from a set of one or two available options rather than from the real set — which DC-16 forbids ("a future system MUST NOT be implemented merely because the architecture acknowledges that it will eventually exist"). Deferring keeps the choice open until there is evidence to make it with.
-- **Exact permitted scope:** Holderless inventories may exist *only* as a headless foundation and as a test abstraction. Nothing else in the repository may depend on an inventory, and nothing does: no person, household, settlement, property, Actor, or UI references one, and the only callers are automation tests.
-- **Exact expiration boundary:** The waiver expires the moment any inventory participates in gameplay, production, harvesting, consumption, hauling, markets, trade, or any other physical world simulation. In practice the first such integration is the work and movement slice. Holder and location semantics must be resolved *before* that integration, not alongside it.
-- **Consequence if unresolved:** Integrating any of those systems against holderless inventories would put goods into play with custody but no location, which is a direct DC-04 violation and would make the prototype's required failure cases ("destination inventory is full or rejects the resource", "a route becomes unavailable during a transfer") unrepresentable. It would also turn a staged exception into an undocumented permanent architecture — the outcome the constitution's prototype exception standard exists to prevent. If the boundary is reached without holder semantics, the correct action is to stop and design them, not to proceed.
-- **Not weakened:** The constitution is unchanged. This is a narrowly scoped, time-bounded waiver against a specific rule, with a named expiry, recorded where the implementation lives.
+Prototype 0.1D retires it. Stationary location is now an explicit `FInventoryLocation` on every inventory: empty inventories may be `None`, and any inventory containing goods must have exactly one valid `PhysicalSite`. Gameplay systems may not create holderless goods. The historical waiver text is kept here so the decision record stays intact; the rule in force is in `PHYSICAL_SITE_INVENTORY_LOCATION.md`.
+
+Mobile holders (person, cart, pack animal, ship) remain unimplemented. That is a deferred system, not a continuation of this waiver.
 
 ### 2. Aggregate quantities rather than resource lots
 
@@ -484,7 +483,7 @@ This is no longer merely a recorded simplification. The following waiver was exp
 
 ## Known limitations
 
-1. **No holder or location**, as above. An inventory floats free; goods have custody but not a place. Covered by an approved waiver with a named expiry.
+1. **Empty inventories may be unlocated; populated inventories may not.** Prototype 0.1D retired the holderless waiver. See `PHYSICAL_SITE_INVENTORY_LOCATION.md`. Mobile holders remain unimplemented.
 2. **No lots, provenance, quality, or reservations.** Two units of the same good are indistinguishable, and nothing can be reserved before collection, which scope step 3 will eventually require.
 3. **The audit trail is minimal and unbounded.** It records action, inventory, good type, quantity, and reason, and nothing else: no time, because no clock exists; no lot; no actor. It is never trimmed, cleared, or persisted, so a long-running session grows it without limit. It covers creation and destruction only — DC-04 also names transformation and spoilage, which no system can yet perform.
 4. **No persistence of any kind.** The authored key is the identity a save format would record, but nothing serializes it, and no record carries a schema version.
@@ -497,22 +496,13 @@ This is no longer merely a recorded simplification. The following waiver was exp
 11. **No owner and no command boundary.** Nothing constructs the registry outside tests, and callers would invoke methods directly.
 12. **No measured performance data.** The largest test holds 4 good types and 5 inventories. No benchmark has been run and no scalability claim is made beyond the structural observations below.
 
-## Deferred holder and location model
+## Deferred mobile-holder model
 
-Recorded so the eventual shape is visible without being built. The data model's intended chain is `Building/Site -> Inventory -> Resource Lots`, with `Person 1 ---- carries/controls ---- 0..* Inventory` and `Field 1 ---- creates harvest into ---- 0..* Inventory / staged Lot`.
+Stationary location was resolved in Prototype 0.1D: `Inventory.Location` is a tagged value whose only located kind is `PhysicalSite`. The remaining open question is mobile custody — a person carrying goods, a cart, a pack animal, a ship.
 
-The open question is whether the holder reference lives on the inventory (one nullable holder field, or a small holder-kind plus identifier pair), or whether each holder type keeps its own inventory identifiers, or whether a separate attachment record owns the relationship the way `Residence Assignment` does for households. This slice deliberately does not choose, because the choice should be made when at least two real holder types exist to compare — a building storage point and a person's carried inventory have quite different lifetimes.
+That future kind belongs on the same tagged location value, with its own typed identifier, when the first carrier exists. It must not be a generic `HolderId`. See `PHYSICAL_SITE_INVENTORY_LOCATION.md`.
 
-What this slice guarantees for that future work is narrower than the previous revision claimed: an inventory's identity is stable and independent of any holder, so attaching one later need not renumber or recreate existing inventories.
-
-Introducing holders is **not** a purely additive change, and this document previously overstated that. At minimum it will affect:
-
-- **Creation** — `CreateInventory` currently takes nothing and cannot fail. With a holder it gains a parameter, a validation step, and a failure mode, so every call site changes.
-- **Loading and migration** — once persistence exists, saved inventories written without a holder need either a migration that supplies one or an explicit disposition, which is the kind of change the architecture requires to be classified and tested.
-- **Validation** — new invariants are needed: the holder resolves, the holder's kind is permitted, and, depending on the model chosen, that a holder does not claim an inventory some other holder also claims.
-- **Relationship APIs** — a two-sided holder relationship would need the same treatment household membership and residence received in 0.1A and 0.1B: paired operations, atomic transitions, and a documented result enum.
-
-The design will be done when real holder types exist, not now.
+`CreateInventory` still takes nothing and creates an empty unlocated inventory. Assigning a site is a separate operation. Introducing a required location at creation time, or a mobile kind, will still affect creation, loading/migration, validation, and relationship APIs.
 
 ## Future scaling concerns
 
@@ -535,7 +525,7 @@ Recorded rather than solved, per `AI_DEVELOPMENT_RULES.md`.
 Raised for review, not decided here. The earlier open questions — who owns the registry, the module split, and the four from 0.1B — all still stand. This slice adds:
 
 1. **Definition identifiers — answered for good types.** The review's decision split the two roles: an `FName` authored key is the durable definition identity, and `FGoodTypeId` is a runtime handle. What remains open is whether the same shape should serve every future definition family (crops, processes, building archetypes, occupations, skills), and whether authored keys eventually need namespacing or versioning rules. Worth settling before a second definition family arrives, so the pattern is established once.
-2. **Where does the holder relationship live?** Deliberately undecided pending two real holder types, and now covered by a waiver with a named expiry. The possible shapes and the migration cost are described above.
+2. **Where does mobile custody live?** Stationary location is answered in 0.1D. Mobile holders remain a later tagged kind on `FInventoryLocation`, not a generic holder field. See `PHYSICAL_SITE_INVENTORY_LOCATION.md`.
 3. **When do aggregate stacks become lots, and what triggers the split?** The architecture lists aggregation thresholds as deferred. A concrete answer is needed before reservations, because a reservation against an aggregate quantity and a reservation against a lot are different designs.
 4. **Should the goods audit trail eventually move to the domain-event system?** A minimal trail now lives in the registry, which is the smallest thing that satisfies DC-04 for this slice. Once domain events, a simulation clock, and history retention exist, creation and destruction of goods are plausibly events rather than a private array — and the reason `FName` becomes a typed cause carrying its originating system. That migration, along with retention policy and whether the trail is ever persisted, should be decided before production and consumption run at volume.
 5. **Should reasons be validated against something?** Today any non-`None` `FName` is accepted, so a caller can supply a meaningless one. A registered vocabulary of causes would catch typos and make the trail groupable, but defining one before real callers exist would be guesswork. Revisit when the first production or consumption system supplies reasons.
