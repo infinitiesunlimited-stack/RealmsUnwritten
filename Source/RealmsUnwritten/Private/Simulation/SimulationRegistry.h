@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Misc/Optional.h"
 
+#include "Simulation/ActivityTypeRecord.h"
 #include "Simulation/CurrentWork.h"
 #include "Simulation/GoodTypeRecord.h"
 #include "Simulation/GoodsAuditRecord.h"
@@ -314,8 +315,27 @@ enum class EPersonCapabilityPracticeResult : uint8
 };
 
 /**
+ * Outcome of changing a person's recorded current activity.
+ *
+ * Setting and clearing current activity are authoritative state changes. They are not
+ * presence, not CurrentWork, not a task, and not occupation. Nothing walks, no time
+ * passes, and no capability or practice is generated.
+ */
+enum class EPersonActivityResult : uint8
+{
+	/** The person's current activity changed, or was already None when cleared. */
+	Success,
+
+	/** The person identifier does not resolve to a record; no state changed. */
+	UnknownPerson,
+
+	/** The activity type identifier does not resolve to a record; no state changed. */
+	UnknownActivityType
+};
+
+/**
  * Authoritative owner of person, household, settlement, property, good type, inventory,
- * physical site, work type, skill type, and person-capability relationship records.
+ * physical site, work type, skill type, activity type, and person-capability relationship records.
  *
  * The registry is plain C++: no UObject, no Actor, no tick, no loaded map, and no
  * Blueprint exposure. Anything that needs a record resolves it by stable identifier
@@ -326,7 +346,9 @@ enum class EPersonCapabilityPracticeResult : uint8
  * operations, each funnelling into a single private transition: person/household
  * membership, household/settlement location, household/property residence, and
  * inventory/site location. Current work is one-sided: it lives on the person and names a
- * site without the site listing workers, because assignment is not occupancy. Person
+ * site without the site listing workers, because assignment is not occupancy. Current
+ * activity is also one-sided and lives on the person: it names a broad behavior without a
+ * location, task, or work attachment. Person
  * capability is a sparse one-sided relationship collection keyed by (Person, SkillType),
  * stored on the registry rather than on the person record, with no reverse skill-to-people
  * index. Accumulated practice lives on that relationship and increases only through
@@ -430,6 +452,16 @@ public:
 	 */
 	FSkillTypeId CreateSkillType(FName AuthoredKey, const FString& DisplayName);
 
+	/**
+	 * Creates an activity type under a durable authored key and returns its runtime handle.
+	 *
+	 * The authored key is the activity type's definition identity. None and duplicate
+	 * activity-type keys are rejected before allocation. Good-type, work-type, and skill-type
+	 * keys are independent namespaces. The display name is display data only and need not
+	 * be unique.
+	 */
+	FActivityTypeId CreateActivityType(FName AuthoredKey, const FString& DisplayName);
+
 	/** Creates an empty inventory, holding no goods and located nowhere. */
 	FInventoryId CreateInventory();
 
@@ -456,6 +488,9 @@ public:
 
 	/** Whether the identifier resolves to a skill type record. Safe for any identifier value. */
 	bool ContainsSkillType(FSkillTypeId SkillTypeId) const;
+
+	/** Whether the identifier resolves to an activity type record. Safe for any identifier value. */
+	bool ContainsActivityType(FActivityTypeId ActivityTypeId) const;
 
 	/** Whether the identifier resolves to an inventory record. Safe for any identifier value. */
 	bool ContainsInventory(FInventoryId InventoryId) const;
@@ -541,6 +576,18 @@ public:
 	TOptional<FSkillTypeId> FindSkillTypeIdByKey(FName AuthoredKey) const;
 
 	/**
+	 * Reads an activity type record, or returns an unset optional when the identifier does
+	 * not resolve. The result is a detached copy and cannot mutate registry storage.
+	 */
+	TOptional<FActivityTypeRecord> FindActivityType(FActivityTypeId ActivityTypeId) const;
+
+	/**
+	 * Resolves a durable authored key within the independent activity-type namespace.
+	 * Display names and keys registered by other definition families are not consulted.
+	 */
+	TOptional<FActivityTypeId> FindActivityTypeIdByKey(FName AuthoredKey) const;
+
+	/**
 	 * Reads an inventory record, or returns an unset optional for an identifier that does not
 	 * resolve. The result is a copy with the same contract as FindPerson, including a copy of
 	 * the entry list, and is intended for inspection and tests.
@@ -581,6 +628,9 @@ public:
 
 	/** Number of skill type records held. Derived from storage. */
 	int32 GetSkillTypeCount() const { return SkillTypeRecords.Num(); }
+
+	/** Number of activity type records held. Derived from storage. */
+	int32 GetActivityTypeCount() const { return ActivityTypeRecords.Num(); }
 
 	/** Number of recorded person-capability relationships. Derived from sparse storage. */
 	int32 GetPersonCapabilityCount() const { return PersonCapabilityRecords.Num(); }
@@ -671,6 +721,33 @@ public:
 	 * with NotAssigned. No site worker list is updated, because sites do not list workers.
 	 */
 	EPersonWorkResult RemovePersonWork(FPersonId PersonId);
+
+	/**
+	 * Records this as the person's exclusive current activity, replacing any activity already
+	 * recorded so that they never hold two at once.
+	 *
+	 * This is the authoritative statement of what broad behavior is currently instantiated,
+	 * not a task, not presence, and not CurrentWork. Nothing walks, no practice is generated,
+	 * and no capability is acquired.
+	 */
+	EPersonActivityResult SetPersonCurrentActivity(FPersonId PersonId, FActivityTypeId ActivityTypeId);
+
+	/**
+	 * Clears the person's current activity, leaving it unrecorded.
+	 *
+	 * Permitted whether an activity is currently recorded or already None. Unknown people
+	 * are rejected. No work, capability, or practice state is changed.
+	 */
+	EPersonActivityResult ClearPersonCurrentActivity(FPersonId PersonId);
+
+	/**
+	 * Copied current activity for this person, if the person exists.
+	 *
+	 * A populated optional with Kind None means no activity is currently instantiated.
+	 * An unset optional means the person identifier does not resolve. The returned value
+	 * cannot mutate registry storage.
+	 */
+	TOptional<FCurrentActivity> GetPersonCurrentActivity(FPersonId PersonId) const;
 
 	/**
 	 * Records that this person possesses a meaningful acquired capability associated with
@@ -812,6 +889,8 @@ private:
 
 	const FSkillTypeRecord* ResolveSkillType(FSkillTypeId SkillTypeId) const;
 
+	const FActivityTypeRecord* ResolveActivityType(FActivityTypeId ActivityTypeId) const;
+
 	const FInventoryRecord* ResolveInventory(FInventoryId InventoryId) const;
 
 	FPersonRecord* ResolvePersonMutable(FPersonId PersonId);
@@ -850,6 +929,12 @@ private:
 	 * occupancy.
 	 */
 	void SetPersonWork(FPersonRecord& PersonRecord, const FCurrentWork& NewWork);
+
+	/**
+	 * The single authoritative person current-activity write. Recording is one-sided: the
+	 * person names a broad behavior, and no activity type lists people.
+	 */
+	void SetPersonActivity(FPersonRecord& PersonRecord, const FCurrentActivity& NewActivity);
 
 	/**
 	 * The two authoritative inventory quantity mutations, and the only code that writes an
@@ -895,6 +980,8 @@ private:
 
 	bool ValidateSkillTypeRecords(FString& OutFailureDescription) const;
 
+	bool ValidateActivityTypeRecords(FString& OutFailureDescription) const;
+
 	bool ValidatePersonCapabilityRecords(FString& OutFailureDescription) const;
 
 	bool ValidateInventoryRecords(FString& OutFailureDescription) const;
@@ -914,6 +1001,8 @@ private:
 	TArray<FWorkTypeRecord> WorkTypeRecords;
 
 	TArray<FSkillTypeRecord> SkillTypeRecords;
+
+	TArray<FActivityTypeRecord> ActivityTypeRecords;
 
 	TArray<FPersonCapabilityRecord> PersonCapabilityRecords;
 

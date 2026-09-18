@@ -357,6 +357,31 @@ FSkillTypeId FSimulationRegistry::CreateSkillType(FName AuthoredKey, const FStri
 	return SkillTypeRecord.Id;
 }
 
+FActivityTypeId FSimulationRegistry::CreateActivityType(FName AuthoredKey, const FString& DisplayName)
+{
+	// Validation precedes storage so rejection consumes no runtime handle. Only the
+	// activity-type namespace participates in uniqueness; other authored definition families
+	// are independent.
+	if (AuthoredKey.IsNone())
+	{
+		return FActivityTypeId();
+	}
+
+	if (FindActivityTypeIdByKey(AuthoredKey).IsSet())
+	{
+		return FActivityTypeId();
+	}
+
+	const int32 RecordIndex = ActivityTypeRecords.AddDefaulted();
+
+	FActivityTypeRecord& ActivityTypeRecord = ActivityTypeRecords[RecordIndex];
+	ActivityTypeRecord.AuthoredKey = AuthoredKey;
+	ActivityTypeRecord.Id = FromRecordIndex<FActivityTypeId>(RecordIndex);
+	ActivityTypeRecord.Name = DisplayName;
+
+	return ActivityTypeRecord.Id;
+}
+
 FInventoryId FSimulationRegistry::CreateInventory()
 {
 	const int32 RecordIndex = InventoryRecords.AddDefaulted();
@@ -406,6 +431,11 @@ bool FSimulationRegistry::ContainsWorkType(FWorkTypeId WorkTypeId) const
 bool FSimulationRegistry::ContainsSkillType(FSkillTypeId SkillTypeId) const
 {
 	return ResolveSkillType(SkillTypeId) != nullptr;
+}
+
+bool FSimulationRegistry::ContainsActivityType(FActivityTypeId ActivityTypeId) const
+{
+	return ResolveActivityType(ActivityTypeId) != nullptr;
 }
 
 bool FSimulationRegistry::ContainsInventory(FInventoryId InventoryId) const
@@ -548,6 +578,34 @@ TOptional<FSkillTypeId> FSimulationRegistry::FindSkillTypeIdByKey(FName Authored
 	}
 
 	return TOptional<FSkillTypeId>();
+}
+
+TOptional<FActivityTypeRecord> FSimulationRegistry::FindActivityType(FActivityTypeId ActivityTypeId) const
+{
+	if (const FActivityTypeRecord* ActivityTypeRecord = ResolveActivityType(ActivityTypeId))
+	{
+		return TOptional<FActivityTypeRecord>(*ActivityTypeRecord);
+	}
+
+	return TOptional<FActivityTypeRecord>();
+}
+
+TOptional<FActivityTypeId> FSimulationRegistry::FindActivityTypeIdByKey(FName AuthoredKey) const
+{
+	if (AuthoredKey.IsNone())
+	{
+		return TOptional<FActivityTypeId>();
+	}
+
+	for (const FActivityTypeRecord& ActivityTypeRecord : ActivityTypeRecords)
+	{
+		if (ActivityTypeRecord.AuthoredKey == AuthoredKey)
+		{
+			return TOptional<FActivityTypeId>(ActivityTypeRecord.Id);
+		}
+	}
+
+	return TOptional<FActivityTypeId>();
 }
 
 TOptional<FInventoryRecord> FSimulationRegistry::FindInventory(FInventoryId InventoryId) const
@@ -843,6 +901,46 @@ EPersonWorkResult FSimulationRegistry::RemovePersonWork(FPersonId PersonId)
 	SetPersonWork(*PersonRecord, FCurrentWork::Nowhere());
 
 	return EPersonWorkResult::Success;
+}
+
+EPersonActivityResult FSimulationRegistry::SetPersonCurrentActivity(
+	FPersonId PersonId, FActivityTypeId ActivityTypeId)
+{
+	FPersonRecord* PersonRecord = ResolvePersonMutable(PersonId);
+	if (PersonRecord == nullptr)
+	{
+		return EPersonActivityResult::UnknownPerson;
+	}
+
+	if (!ContainsActivityType(ActivityTypeId))
+	{
+		return EPersonActivityResult::UnknownActivityType;
+	}
+
+	SetPersonActivity(*PersonRecord, FCurrentActivity::OfType(ActivityTypeId));
+	return EPersonActivityResult::Success;
+}
+
+EPersonActivityResult FSimulationRegistry::ClearPersonCurrentActivity(FPersonId PersonId)
+{
+	FPersonRecord* PersonRecord = ResolvePersonMutable(PersonId);
+	if (PersonRecord == nullptr)
+	{
+		return EPersonActivityResult::UnknownPerson;
+	}
+
+	SetPersonActivity(*PersonRecord, FCurrentActivity::Unrecorded());
+	return EPersonActivityResult::Success;
+}
+
+TOptional<FCurrentActivity> FSimulationRegistry::GetPersonCurrentActivity(FPersonId PersonId) const
+{
+	if (const FPersonRecord* PersonRecord = ResolvePerson(PersonId))
+	{
+		return TOptional<FCurrentActivity>(PersonRecord->CurrentActivity);
+	}
+
+	return TOptional<FCurrentActivity>();
 }
 
 EPersonCapabilityResult FSimulationRegistry::AddPersonCapability(
@@ -1169,6 +1267,7 @@ bool FSimulationRegistry::ValidateInvariants(FString& OutFailureDescription) con
 		&& ValidateGoodTypeRecords(OutFailureDescription)
 		&& ValidateWorkTypeRecords(OutFailureDescription)
 		&& ValidateSkillTypeRecords(OutFailureDescription)
+		&& ValidateActivityTypeRecords(OutFailureDescription)
 		&& ValidatePersonCapabilityRecords(OutFailureDescription)
 		&& ValidateInventoryRecords(OutFailureDescription);
 }
@@ -1238,6 +1337,35 @@ bool FSimulationRegistry::ValidatePersonRecords(FString& OutFailureDescription) 
 			OutFailureDescription = FString::Printf(
 				TEXT("%s has unsupported current-work kind %u."),
 				*PersonRecord.Id.ToString(), static_cast<uint32>(CurrentWork.Kind));
+			return false;
+		}
+
+		const FCurrentActivity& CurrentActivity = PersonRecord.CurrentActivity;
+		if (CurrentActivity.Kind == ECurrentActivityKind::None)
+		{
+			if (CurrentActivity.ActivityTypeId.IsValid())
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s has no current activity but names %s."),
+					*PersonRecord.Id.ToString(), *CurrentActivity.ActivityTypeId.ToString());
+				return false;
+			}
+		}
+		else if (CurrentActivity.Kind == ECurrentActivityKind::ActivityType)
+		{
+			if (!ContainsActivityType(CurrentActivity.ActivityTypeId))
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s is engaged in unresolvable %s."),
+					*PersonRecord.Id.ToString(), *CurrentActivity.ActivityTypeId.ToString());
+				return false;
+			}
+		}
+		else
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("%s has unsupported current-activity kind %u."),
+				*PersonRecord.Id.ToString(), static_cast<uint32>(CurrentActivity.Kind));
 			return false;
 		}
 
@@ -1716,6 +1844,42 @@ bool FSimulationRegistry::ValidateSkillTypeRecords(FString& OutFailureDescriptio
 	return true;
 }
 
+bool FSimulationRegistry::ValidateActivityTypeRecords(FString& OutFailureDescription) const
+{
+	for (int32 RecordIndex = 0; RecordIndex < ActivityTypeRecords.Num(); ++RecordIndex)
+	{
+		const FActivityTypeRecord& ActivityTypeRecord = ActivityTypeRecords[RecordIndex];
+
+		if (ToRecordIndex(ActivityTypeRecord.Id, ActivityTypeRecords.Num()) != RecordIndex)
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Activity type slot %d holds identifier %s."),
+				RecordIndex, *ActivityTypeRecord.Id.ToString());
+			return false;
+		}
+
+		if (ActivityTypeRecord.AuthoredKey.IsNone())
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Activity type slot %d has no authored key."), RecordIndex);
+			return false;
+		}
+
+		for (int32 EarlierIndex = 0; EarlierIndex < RecordIndex; ++EarlierIndex)
+		{
+			if (ActivityTypeRecords[EarlierIndex].AuthoredKey == ActivityTypeRecord.AuthoredKey)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("Activity type slots %d and %d share the authored key '%s'."),
+					EarlierIndex, RecordIndex, *ActivityTypeRecord.AuthoredKey.ToString());
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 bool FSimulationRegistry::ValidatePersonCapabilityRecords(FString& OutFailureDescription) const
 {
 	for (int32 RecordIndex = 0; RecordIndex < PersonCapabilityRecords.Num(); ++RecordIndex)
@@ -1906,6 +2070,12 @@ const FSkillTypeRecord* FSimulationRegistry::ResolveSkillType(FSkillTypeId Skill
 	return RecordIndex == INDEX_NONE ? nullptr : &SkillTypeRecords[RecordIndex];
 }
 
+const FActivityTypeRecord* FSimulationRegistry::ResolveActivityType(FActivityTypeId ActivityTypeId) const
+{
+	const int32 RecordIndex = ToRecordIndex(ActivityTypeId, ActivityTypeRecords.Num());
+	return RecordIndex == INDEX_NONE ? nullptr : &ActivityTypeRecords[RecordIndex];
+}
+
 const FInventoryRecord* FSimulationRegistry::ResolveInventory(FInventoryId InventoryId) const
 {
 	const int32 RecordIndex = ToRecordIndex(InventoryId, InventoryRecords.Num());
@@ -2059,4 +2229,9 @@ void FSimulationRegistry::SetInventoryLocation(
 void FSimulationRegistry::SetPersonWork(FPersonRecord& PersonRecord, const FCurrentWork& NewWork)
 {
 	PersonRecord.CurrentWork = NewWork;
+}
+
+void FSimulationRegistry::SetPersonActivity(FPersonRecord& PersonRecord, const FCurrentActivity& NewActivity)
+{
+	PersonRecord.CurrentActivity = NewActivity;
 }

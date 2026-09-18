@@ -71,7 +71,7 @@ Source/RealmsUnwritten/Private/Tests/PersonCapabilityTests.cpp
 Source/RealmsUnwritten/Private/Tests/PersonGeneralCapabilityTests.cpp
 ```
 
-Files extended: `SimulationRegistry.{h,cpp}`, `Tests/SimulationRegistryTestAccess.h`. **`RealmsUnwritten.Build.cs` is unchanged.** `FPersonRecord` is unchanged: it still holds no capability collection, practice, proficiency, or occupation.
+Files extended: `SimulationRegistry.{h,cpp}`, `Tests/SimulationRegistryTestAccess.h`. **`RealmsUnwritten.Build.cs` is unchanged.** `FPersonRecord` is unchanged by 0.1G–0.1I: it still holds no capability collection, practice, proficiency, or occupation. Prototype 0.1J later stores independent `CurrentActivity` on the person (`PERSON_ACTIVITY.md`).
 
 ## Data model
 
@@ -100,7 +100,7 @@ It is not automatically:
 - percentage mastery
 - occupation duration
 
-`1` Practice is conceptually calibrated as approximately one hour-equivalent of meaningful developmental participation. That is not necessarily one literal clock hour, and 0.1I does not generate practice. Future activity and learning systems will determine how meaningful actions produce practice.
+`1` Practice is conceptually calibrated as approximately one hour-equivalent of meaningful developmental participation. That is not necessarily one literal clock hour, and 0.1I does not generate practice. Prototype 0.1J records optional Current Activity (`PERSON_ACTIVITY.md`) without generating practice. Future participation and learning systems will determine how meaningful actions produce practice.
 
 Zero means no accumulated practice has yet been quantified by the practice-state system for this relationship. It does not mean the person has never encountered the capability, and it does not mean biological inability. The capability relationship itself still means the broad capability has been meaningfully acquired.
 
@@ -127,7 +127,7 @@ Test-only corruption access remains guarded by `WITH_DEV_AUTOMATION_TESTS` and e
 
 `AddPersonCapabilityPractice` is an authority primitive, not the learning system. It does not decide why practice was earned. It does not automatically create a missing capability relationship.
 
-The intended future acquisition path is that a higher-level Activity/Participation system will create the relationship on first meaningful participation, then increment practice. That Activity system is not implemented. Query operations do not create capabilities.
+The intended future acquisition path is that a higher-level Participation system will create the relationship on first meaningful participation, then increment practice. Prototype 0.1J records optional Current Activity as broad behavior (`PERSON_ACTIVITY.md`) and does not create Person Capability relationships or generate Practice. Query operations do not create capabilities.
 
 There is no `RemovePersonCapability` and no decrement of practice.
 
@@ -202,7 +202,7 @@ These checks are part of `ValidateInvariants` and do not weaken earlier simulati
 - **Occupation:** how a person is economically or socially identified. Not implemented.
 - **CurrentWork:** what a person is currently assigned to (`WORK_LABOR.md`). Unchanged.
 - **Presence:** where a person physically is. Not implemented.
-- **Activity:** what a person is actually doing. Not implemented.
+- **Activity:** what broad behavior is currently recorded (`PERSON_ACTIVITY.md`). Independent of capability and practice. Activity operations do not call `AddPersonCapability` or `AddPersonCapabilityPractice`.
 - **Credential / institutional recognition:** how institutions recognize capability. Not implemented.
 
 Adding a capability or increasing practice mutates only the relationship collection. It does not change CurrentWork, inventory, residence, physical sites, goods, property, household, occupation, or movement.
@@ -228,13 +228,13 @@ Prototype 0.1G–0.1I do not implement or scaffold:
 - apprenticeship, guilds, credentials, certification, teachers, education, schools, universities, or monasteries as training systems
 - Knowledge Types, books, literacy, technology transfer, innovation, or knowledge graphs
 - automatic capability acquisition from age, work, household, observation, employment, or tasks
-- Activity/Participation, even though first meaningful participation is the intended future acquisition trigger
+- Participation, even though first meaningful participation remains the intended future acquisition trigger; 0.1J Current Activity does not generate practice
 - `GetPeopleWithSkill` or any reverse Skill Type → Persons index
 - capability removal, history, archival state, or status enums
 - a public `SetPractice` production API
 - persistent or cached General Capability
 - labor recruitment or regional skilled-worker search
 - simulation ticking, LOD, or archival compression
-- movement, presence, activity, or CurrentWork changes
+- movement, presence, or CurrentWork changes; Current Activity is later independent person state (`PERSON_ACTIVITY.md`) and does not mutate this relationship
 
-`FPersonRecord`, Skill Types, Work Types, CurrentWork, Physical Sites, goods, inventories, households, settlements, and properties keep the semantics established in 0.1A–0.1F. 0.1G relationship addition remains the acquisition primitive.
+`FPersonRecord` still holds no capability collection after 0.1G–0.1I. Skill Types, Work Types, CurrentWork, Physical Sites, goods, inventories, households, settlements, and properties keep the semantics established in 0.1A–0.1F. 0.1G relationship addition remains the acquisition primitive.

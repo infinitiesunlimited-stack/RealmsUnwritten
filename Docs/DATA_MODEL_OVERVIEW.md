@@ -66,13 +66,14 @@ Core authoritative data:
 - Occupation and active job assignment references.
 - Skills, qualifications, and later knowledge/proficiency references.
 - Personal possessions through an inventory or ownership references.
-- Current commitment/activity and logical/spatial location state.
+- Current work commitment, current activity, and logical/spatial location state.
 
 Important rules:
 
 - A person has at most one primary household at a time.
 - Household membership and residence are separate; a person may travel or lodge elsewhere.
 - Occupation is an identity/competence category; a job assignment is actual work. Prototype 0.1E stores one exclusive `CurrentWork` commitment on the person (`WORK_LABOR.md`); that is not occupation and not the long-term job-assignment record.
+- Current activity is broad recorded behavior, not occupation, not CurrentWork, not presence, and not a task. Prototype 0.1J stores one optional `CurrentActivity` on the person (`PERSON_ACTIVITY.md`). `None` means no activity is instantiated, not that the person is physically inactive.
 - When military service exists, it is a commitment or state of this person, not a separately spawned unit identity. Civilian labor must not remain fully available as if the person were still at home.
 - Current animation, visible destination marker, and UI selection are not person state.
 - A person may be dormant or coarsely scheduled off-screen without losing identity.
@@ -81,7 +82,9 @@ Prototype 0.1F establishes authored identity for kinds of skills (`SKILLS_KNOWLE
 Prototype 0.1G records which people possess which Skill Types as sparse registry-owned
 relationships (`PERSON_CAPABILITY.md`). Prototype 0.1H stores `uint32` accumulated practice
 on that relationship. Prototype 0.1I derives a read-only general capability integer from
-that practice without storing it on the person or the relationship. The remaining
+that practice without storing it on the person or the relationship. Prototype 0.1J records
+authored Activity Type identity and one optional `CurrentActivity` on the person
+(`PERSON_ACTIVITY.md`) without generating practice or implying a capability. The remaining
 person-facing items above remain future data-model requirements.
 
 ### Household
@@ -155,12 +158,16 @@ A `Job` represents work needed or a durable workplace/role, depending on subtype
 
 Prototype 0.1E implements only the exclusive person-side commitment: `Person.CurrentWork` names a work type and a stationary physical site. That is a labeled simplification of the assignment/commitment role, not a job request, not occupation, and not physical presence. See `WORK_LABOR.md`.
 
+Prototype 0.1J stores one optional `Person.CurrentActivity` naming an authored Activity Type. That is broad current behavior, not the long-term job Activity listed below, not a task, and not CurrentWork. CurrentWork does not automatically produce Working, and Working does not require CurrentWork. See `PERSON_ACTIVITY.md`.
+
 Recommended conceptual split:
 
 - **Occupation Definition:** Farmer, miller, baker, hauler, logger; describes a vocational category.
 - **Work Request / Job:** Work to perform, issuer, site, time window, priority, requirements, expected effort, and compensation policy if applicable.
 - **Job Assignment / Commitment:** Link between a person and accepted work, including status and scheduled interval.
-- **Activity:** The currently executing portion of an assignment, such as travel, pickup, milling, or delivery.
+- **Current Activity:** Broad recorded behavior such as Working, Sleeping, or Traveling (`PERSON_ACTIVITY.md`).
+- **Task:** A later specific objective or action, such as shaping a roof beam. Not implemented.
+- **Job Activity (long-term):** The currently executing portion of an assignment, such as travel, pickup, milling, or delivery. Not collapsed into Current Activity.
 
 Core authoritative job data:
 
@@ -368,6 +375,7 @@ The smallest valid prototype model is:
 ```text
 Person -> Household -> Residence/Property -> Settlement
 Person -> CurrentWork (0.1E exclusive commitment) -> WorkType + PhysicalSite
+Person -> CurrentActivity (0.1J optional recorded behavior) -> ActivityType
 Person -> Job Assignment -> Farming/Hauling/Production Work
 Property -> Field -> Wheat Crop Cycle -> Wheat Resource Lot
 Building/Site -> Inventory -> Resource Lots

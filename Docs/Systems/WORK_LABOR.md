@@ -5,6 +5,7 @@
 - **Role:** Implementation record for the Prototype 0.1E work and labor foundation
 - **Authority:** Subordinate to `DESIGN_CONSTITUTION.md`, `HIGH_LEVEL_ARCHITECTURE.md`, `DATA_MODEL_OVERVIEW.md`, and `PROTOTYPE_0_1_SCOPE.md`
 - **Extends:** `SIMULATION_FOUNDATION.md` (0.1A), `SETTLEMENT_PROPERTY_RESIDENCE.md` (0.1B), `GOODS_INVENTORY.md` (0.1C), and `PHYSICAL_SITE_INVENTORY_LOCATION.md` (0.1D), none of which is superseded
+- **Extended by:** `PERSON_ACTIVITY.md` (Prototype 0.1J), which adds independent Activity Type identity and optional current activity; CurrentWork does not become CurrentActivity
 - **Scope:** Work types, a person's exclusive current-work commitment, and stationary physical-site work targets
 - **Describes:** Only what exists in the repository today
 
@@ -20,7 +21,9 @@ It proves:
 
 Labor originates from people. There is no workforce counter, no household labor pool, and no job board. A person holds at most one current commitment. Reassignment replaces it.
 
-Occupation is not this slice. A future profession (farmer, miller, baker) is a social-economic role; current work is the activity occupying the person now. A farmer may later harvest, repair, haul, or build. Those are work types, not occupations.
+Occupation is not this slice. A future profession (farmer, miller, baker) is a social-economic role; current work is the labor commitment occupying the person's exclusive work slot now. A farmer may later harvest, repair, haul, or build. Those are work types, not occupations.
+
+Current work is not current activity. Prototype 0.1J (`PERSON_ACTIVITY.md`) records optional broad behavior separately. Assignment does not set Working, and Working does not require assignment.
 
 Assignment is not presence. `CurrentWork` targeted at a physical site means the commitment is aimed at that place. It does not mean the person is there, walked there, arrived, is animating work, or is within any distance.
 
@@ -99,7 +102,7 @@ Work type and site purpose stay independent. A person may be assigned `Work.Test
 CurrentWork
 ```
 
-Default is `Nowhere()`. It is a single value, not an array. Occupation, profession, employer, schedule, skill, hours, and military service are not present.
+Default is `Nowhere()`. It is a single value, not an array. Occupation, profession, employer, schedule, skill, hours, and military service are not present. Prototype 0.1J later stores independent `CurrentActivity` on the same record (`PERSON_ACTIVITY.md`); neither field writes the other.
 
 An unhoused person may hold valid current work. Assignment does not require household, settlement, residence, or settlement matching.
 
@@ -161,12 +164,14 @@ Prototype 0.1E records these simplifications under the constitution's prototype 
 3. **Work types are allocated at runtime**, like good types. Replacement trigger: authored content pipeline.
 4. **Stationary physical-site targets only.** Replacement trigger: the first non-site work target, added as a new `ECurrentWorkKind`.
 5. **Occupation is unimplemented.** Current work must not be treated as profession.
+6. **Current work is not current activity.** Prototype 0.1J records optional broad behavior separately. CurrentWork does not automatically produce Working, and Working does not require CurrentWork.
 
 ## Future-extension notes
 
 Documented, not implemented.
 
 - Occupation becomes a separate definition family and person field.
+- Current Activity remains independent of this exclusive labor slot (`PERSON_ACTIVITY.md`).
 - Job requests and `FWorkAssignmentId` appear when work has an independent lifecycle.
 - New current-work kinds cover fields, mobile targets, or service without overloading `PhysicalSiteId`.
 - A derived worker index may appear when production needs "who is committed here."
