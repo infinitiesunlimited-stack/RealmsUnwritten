@@ -28,8 +28,10 @@ struct FPersonCapabilityRecord
 	/**
 	 * Persistent normalized meaningful developmental practice for this acquired capability.
 	 *
-	 * Zero until quantified. The unit is abstract: it is not hours, days, task counts, XP,
-	 * or proficiency. Practice only increases; disuse does not subtract from it.
-	 */
+ * Zero until quantified. Conceptually calibrated as hour-equivalent meaningful developmental
+ * participation, not a literal clock hour, XP, or proficiency. Practice only increases;
+ * disuse does not subtract from it. General Capability is derived from this value and is
+ * not stored here.
+ */
 	uint32 AccumulatedPractice = 0;
 };

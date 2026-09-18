@@ -5,7 +5,7 @@
 - **Role:** Implementation record for Prototype 0.1F
 - **Authority:** Subordinate to `DESIGN_CONSTITUTION.md`, `HIGH_LEVEL_ARCHITECTURE.md`, `DATA_MODEL_OVERVIEW.md`, and `PROTOTYPE_0_1_SCOPE.md`
 - **Extends:** The authored-definition identity pattern established by Good Type and Work Type
-- **Extended by:** `PERSON_CAPABILITY.md` (Prototype 0.1G–0.1H), which records which people possess which Skill Types and how much accumulated practice is stored for those relationships, without adding skill fields to `FPersonRecord`
+- **Extended by:** `PERSON_CAPABILITY.md` (Prototype 0.1G–0.1I), which records which people possess which Skill Types, stores accumulated practice for those relationships, and derives a read-only general capability from that practice without adding skill fields to `FPersonRecord`
 - **Scope:** Skill Type identity only
 - **Describes:** Only what exists in the repository today
 
@@ -22,8 +22,9 @@ types at runtime.
 A Skill Type is a definition, not a person's skill state. Prototype 0.1F creates no link from
 a person to a skill and records no value, proficiency, experience, progress, or ability.
 Prototype 0.1G (`PERSON_CAPABILITY.md`) records the sparse Person → Skill Type relationship
-on the registry. Prototype 0.1H stores accumulated practice on that relationship, still
-without proficiency, learning curves, or a capability collection on the person.
+on the registry. Prototype 0.1H stores accumulated practice on that relationship. Prototype
+0.1I derives general capability from that practice without storing proficiency or a
+capability collection on the person.
 
 ## Identity model
 
@@ -83,7 +84,7 @@ simulation invariant.
 - **Skill Type:** what kind of capability this is.
 - **Person Capability:** the recorded relationship that a particular person possesses this Skill Type (`PERSON_CAPABILITY.md`).
 - **Accumulated Practice:** persistent developmental history for that acquired capability; not proficiency.
-- **Capability State:** a future statement of degree, proficiency, or experience; not implemented.
+- **General Capability:** derived broad learned ability interpreted from AccumulatedPractice; not stored.
 - **Knowledge:** what a person understands; not implemented here.
 - **Occupation:** a person's economic or social work identity; not implemented here.
 - **CurrentWork:** what a person is presently assigned to; unchanged from 0.1E.

@@ -77,6 +77,71 @@ namespace
 		return INDEX_NONE;
 	}
 
+	/**
+	 * 10,000^2. The locked interpretation is floor(sqrt(floor((this * P) / (P + 4000)))).
+	 *
+	 * 100,000,000 * MAX_uint32 = 429,496,729,500,000,000, which is less than MAX_uint64
+	 * (18,446,744,073,709,551,615), so the numerator fits in uint64 for every legal practice.
+	 */
+	constexpr uint64 GeneralCapabilityNumeratorScale = 100000000ull;
+	constexpr uint64 GeneralCapabilityPracticeOffset = 4000ull;
+	constexpr uint32 GeneralCapabilityBound = 10000u;
+
+	static_assert(MAX_uint32 <= MAX_uint64 / GeneralCapabilityNumeratorScale,
+		"100,000,000 * AccumulatedPractice must fit in uint64 for every uint32 practice value.");
+
+	/**
+	 * floor(sqrt(Value)) for Value in [0, Bound^2). Mid * Mid is formed in uint64 and cannot
+	 * overflow because Mid never exceeds 10,000.
+	 */
+	uint32 FloorSqrtBounded(uint64 Value)
+	{
+		uint32 Low = 0;
+		uint32 High = GeneralCapabilityBound;
+		uint32 Result = 0;
+
+		while (Low <= High)
+		{
+			const uint32 Mid = Low + (High - Low) / 2;
+			const uint64 Square = static_cast<uint64>(Mid) * static_cast<uint64>(Mid);
+			if (Square == Value)
+			{
+				return Mid;
+			}
+
+			if (Square < Value)
+			{
+				Result = Mid;
+				Low = Mid + 1;
+			}
+			else
+			{
+				if (Mid == 0)
+				{
+					return 0;
+				}
+
+				High = Mid - 1;
+			}
+		}
+
+		return Result;
+	}
+
+	/**
+	 * Deterministic derived general capability from accumulated practice.
+	 *
+	 * floor(sqrt(floor((100,000,000 * P) / (P + 4,000)))). Not stored. Practice remains
+	 * the authoritative history.
+	 */
+	uint32 DeriveGeneralCapability(uint32 Practice)
+	{
+		const uint64 PracticeWide = Practice;
+		const uint64 Scaled = (GeneralCapabilityNumeratorScale * PracticeWide)
+			/ (PracticeWide + GeneralCapabilityPracticeOffset);
+		return FloorSqrtBounded(Scaled);
+	}
+
 	/** Quantity of a good type held, or zero when the inventory holds none of it. */
 	int32 GetEntryQuantity(const TArray<FInventoryEntry>& Entries, FGoodTypeId GoodTypeId)
 	{
@@ -858,6 +923,18 @@ TOptional<uint32> FSimulationRegistry::GetPersonCapabilityPractice(
 	}
 
 	return PersonCapabilityRecords[RecordIndex].AccumulatedPractice;
+}
+
+TOptional<uint32> FSimulationRegistry::GetPersonGeneralCapability(
+	FPersonId PersonId, FSkillTypeId SkillTypeId) const
+{
+	const int32 RecordIndex = FindPersonCapabilityIndex(PersonCapabilityRecords, PersonId, SkillTypeId);
+	if (RecordIndex == INDEX_NONE)
+	{
+		return TOptional<uint32>();
+	}
+
+	return DeriveGeneralCapability(PersonCapabilityRecords[RecordIndex].AccumulatedPractice);
 }
 
 void FSimulationRegistry::ApplyGoodsAddition(

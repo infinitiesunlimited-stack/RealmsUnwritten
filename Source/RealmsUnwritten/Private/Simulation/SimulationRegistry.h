@@ -330,7 +330,8 @@ enum class EPersonCapabilityPracticeResult : uint8
  * capability is a sparse one-sided relationship collection keyed by (Person, SkillType),
  * stored on the registry rather than on the person record, with no reverse skill-to-people
  * index. Accumulated practice lives on that relationship and increases only through
- * AddPersonCapabilityPractice. Callers therefore cannot edit a record directly, and cannot
+ * AddPersonCapabilityPractice. Derived general capability is a read-only interpretation of
+ * that practice and is not stored. Callers therefore cannot edit a record directly, and cannot
  * leave either side of a two-sided relationship disagreeing with the other.
  *
  * Inventory contents are one-sided rather than a relationship, so they are mutated through
@@ -707,6 +708,16 @@ public:
 	 * value is a copy and cannot mutate registry storage.
 	 */
 	TOptional<uint32> GetPersonCapabilityPractice(FPersonId PersonId, FSkillTypeId SkillTypeId) const;
+
+	/**
+	 * Derived general capability for this pair, if the relationship exists.
+	 *
+	 * This is a read-only interpretation of AccumulatedPractice on a 0..10,000 scale. It is
+	 * not stored, not proficiency, not task performance, and not a success probability.
+	 * Practice 0 on an existing relationship returns 0. A missing relationship returns unset.
+	 * The returned value is a copy and cannot mutate registry storage.
+	 */
+	TOptional<uint32> GetPersonGeneralCapability(FPersonId PersonId, FSkillTypeId SkillTypeId) const;
 
 	/**
 	 * Creates a positive quantity of a good type inside an inventory, creating the entry if

@@ -80,9 +80,9 @@ Important rules:
 Prototype 0.1F establishes authored identity for kinds of skills (`SKILLS_KNOWLEDGE.md`).
 Prototype 0.1G records which people possess which Skill Types as sparse registry-owned
 relationships (`PERSON_CAPABILITY.md`). Prototype 0.1H stores `uint32` accumulated practice
-on that relationship, still without adding a capability collection, proficiency, experience,
-or progression to the person record. The remaining person-facing items above remain future
-data-model requirements.
+on that relationship. Prototype 0.1I derives a read-only general capability integer from
+that practice without storing it on the person or the relationship. The remaining
+person-facing items above remain future data-model requirements.
 
 ### Household
 
