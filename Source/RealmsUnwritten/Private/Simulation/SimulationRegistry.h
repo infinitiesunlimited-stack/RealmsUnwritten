@@ -8,6 +8,7 @@
 #include "Simulation/GoodsAuditRecord.h"
 #include "Simulation/HouseholdRecord.h"
 #include "Simulation/InventoryRecord.h"
+#include "Simulation/PersonCapabilityRecord.h"
 #include "Simulation/PersonRecord.h"
 #include "Simulation/PhysicalSiteRecord.h"
 #include "Simulation/PropertyRecord.h"
@@ -265,8 +266,29 @@ enum class EPersonWorkResult : uint8
 };
 
 /**
+ * Outcome of recording that a person possesses a skill type as an acquired capability.
+ *
+ * This is relationship existence only: no proficiency, no CurrentWork change, and no
+ * implication of physical presence or occupation.
+ */
+enum class EPersonCapabilityResult : uint8
+{
+	/** The (Person, SkillType) relationship was recorded. */
+	Success,
+
+	/** That pair was already recorded; no state changed. */
+	AlreadyHasCapability,
+
+	/** The person identifier does not resolve to a record; no state changed. */
+	UnknownPerson,
+
+	/** The skill type identifier does not resolve to a record; no state changed. */
+	UnknownSkillType
+};
+
+/**
  * Authoritative owner of person, household, settlement, property, good type, inventory,
- * physical site, work type, and skill type records.
+ * physical site, work type, skill type, and person-capability relationship records.
  *
  * The registry is plain C++: no UObject, no Actor, no tick, no loaded map, and no
  * Blueprint exposure. Anything that needs a record resolves it by stable identifier
@@ -277,9 +299,11 @@ enum class EPersonWorkResult : uint8
  * operations, each funnelling into a single private transition: person/household
  * membership, household/settlement location, household/property residence, and
  * inventory/site location. Current work is one-sided: it lives on the person and names a
- * site without the site listing workers, because assignment is not occupancy. Callers
- * therefore cannot edit a record directly, and cannot leave either side of a two-sided
- * relationship disagreeing with the other.
+ * site without the site listing workers, because assignment is not occupancy. Person
+ * capability is a sparse one-sided relationship collection keyed by (Person, SkillType),
+ * stored on the registry rather than on the person record, with no reverse skill-to-people
+ * index. Callers therefore cannot edit a record directly, and cannot leave either side of a
+ * two-sided relationship disagreeing with the other.
  *
  * Inventory contents are one-sided rather than a relationship, so they are mutated through
  * AddGoods, RemoveGoods, and TransferGoods. No caller receives a mutable inventory, so the
@@ -529,6 +553,9 @@ public:
 	/** Number of skill type records held. Derived from storage. */
 	int32 GetSkillTypeCount() const { return SkillTypeRecords.Num(); }
 
+	/** Number of recorded person-capability relationships. Derived from sparse storage. */
+	int32 GetPersonCapabilityCount() const { return PersonCapabilityRecords.Num(); }
+
 	/** Number of inventory records held. Derived from storage. */
 	int32 GetInventoryCount() const { return InventoryRecords.Num(); }
 
@@ -615,6 +642,24 @@ public:
 	 * with NotAssigned. No site worker list is updated, because sites do not list workers.
 	 */
 	EPersonWorkResult RemovePersonWork(FPersonId PersonId);
+
+	/**
+	 * Records that this person possesses a meaningful acquired capability associated with
+	 * this skill type.
+	 *
+	 * The pair is unique. Duplicate pairs, unknown people, and unknown skill types are
+	 * rejected with no mutation. This does not assign CurrentWork, imply occupation, store
+	 * proficiency, or create missing people or skill types.
+	 */
+	EPersonCapabilityResult AddPersonCapability(FPersonId PersonId, FSkillTypeId SkillTypeId);
+
+	/**
+	 * Whether a person-capability relationship is currently recorded for this pair.
+	 *
+	 * Absence means only that no such relationship is recorded, not that the person is
+	 * unable to act. Unknown identifiers likewise report no recorded relationship.
+	 */
+	bool PersonHasCapability(FPersonId PersonId, FSkillTypeId SkillTypeId) const;
 
 	/**
 	 * Creates a positive quantity of a good type inside an inventory, creating the entry if
@@ -792,6 +837,8 @@ private:
 
 	bool ValidateSkillTypeRecords(FString& OutFailureDescription) const;
 
+	bool ValidatePersonCapabilityRecords(FString& OutFailureDescription) const;
+
 	bool ValidateInventoryRecords(FString& OutFailureDescription) const;
 
 	TArray<FPersonRecord> PersonRecords;
@@ -809,6 +856,8 @@ private:
 	TArray<FWorkTypeRecord> WorkTypeRecords;
 
 	TArray<FSkillTypeRecord> SkillTypeRecords;
+
+	TArray<FPersonCapabilityRecord> PersonCapabilityRecords;
 
 	TArray<FInventoryRecord> InventoryRecords;
 

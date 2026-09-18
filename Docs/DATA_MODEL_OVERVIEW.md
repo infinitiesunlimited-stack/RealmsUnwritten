@@ -77,9 +77,11 @@ Important rules:
 - Current animation, visible destination marker, and UI selection are not person state.
 - A person may be dormant or coarsely scheduled off-screen without losing identity.
 
-Prototype 0.1F establishes authored identity for kinds of skills (`SKILLS_KNOWLEDGE.md`),
-but it does not add any skill field, value, proficiency, experience, or progression to a
-person. The person-facing items above remain future data-model requirements.
+Prototype 0.1F establishes authored identity for kinds of skills (`SKILLS_KNOWLEDGE.md`).
+Prototype 0.1G records which people possess which Skill Types as sparse registry-owned
+relationships (`PERSON_CAPABILITY.md`), without adding a capability collection, proficiency,
+experience, or progression to the person record. The remaining person-facing items above
+remain future data-model requirements.
 
 ### Household
 

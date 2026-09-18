@@ -32,6 +32,11 @@ struct FSimulationRegistryTestAccess
 		return Registry.SkillTypeRecords;
 	}
 
+	static TArray<FPersonCapabilityRecord>& PersonCapabilityRecords(FSimulationRegistry& Registry)
+	{
+		return Registry.PersonCapabilityRecords;
+	}
+
 	static TArray<FInventoryRecord>& InventoryRecords(FSimulationRegistry& Registry)
 	{
 		return Registry.InventoryRecords;

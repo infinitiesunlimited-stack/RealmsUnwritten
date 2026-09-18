@@ -5,6 +5,7 @@
 - **Role:** Implementation record for Prototype 0.1F
 - **Authority:** Subordinate to `DESIGN_CONSTITUTION.md`, `HIGH_LEVEL_ARCHITECTURE.md`, `DATA_MODEL_OVERVIEW.md`, and `PROTOTYPE_0_1_SCOPE.md`
 - **Extends:** The authored-definition identity pattern established by Good Type and Work Type
+- **Extended by:** `PERSON_CAPABILITY.md` (Prototype 0.1G), which records which people possess which Skill Types without adding skill fields to `FPersonRecord`
 - **Scope:** Skill Type identity only
 - **Describes:** Only what exists in the repository today
 
@@ -20,6 +21,8 @@ types at runtime.
 
 A Skill Type is a definition, not a person's skill state. Prototype 0.1F creates no link from
 a person to a skill and records no value, proficiency, experience, progress, or ability.
+Prototype 0.1G (`PERSON_CAPABILITY.md`) records the sparse Person → Skill Type relationship
+on the registry, still without magnitude.
 
 ## Identity model
 
@@ -77,7 +80,8 @@ simulation invariant.
 ## Concept boundaries
 
 - **Skill Type:** what kind of capability this is.
-- **Person Skill State:** a future statement about what a particular person can do.
+- **Person Capability:** the recorded relationship that a particular person possesses this Skill Type (`PERSON_CAPABILITY.md`).
+- **Capability State:** a future statement of degree, proficiency, or experience; not implemented.
 - **Knowledge:** what a person understands; not implemented here.
 - **Occupation:** a person's economic or social work identity; not implemented here.
 - **CurrentWork:** what a person is presently assigned to; unchanged from 0.1E.
@@ -92,8 +96,7 @@ presence, or activity.
 
 Prototype 0.1F does not implement or scaffold:
 
-- person skill state or person skill collections;
-- skill values, proficiency, experience, progression, learning, or decay;
+- person skill collections on `FPersonRecord`, skill values, proficiency, experience, progression, learning, or decay;
 - knowledge or Knowledge Types;
 - occupation, profession, jobs, or role catalogs;
 - apprenticeship, education, training, teachers, books, or institutions;

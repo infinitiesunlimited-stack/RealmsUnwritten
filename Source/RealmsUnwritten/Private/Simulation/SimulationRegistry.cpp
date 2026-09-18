@@ -61,6 +61,22 @@ namespace
 		return INDEX_NONE;
 	}
 
+	/** Slot of a recorded (Person, SkillType) pair, or INDEX_NONE when none is recorded. */
+	int32 FindPersonCapabilityIndex(
+		const TArray<FPersonCapabilityRecord>& Records, FPersonId PersonId, FSkillTypeId SkillTypeId)
+	{
+		for (int32 RecordIndex = 0; RecordIndex < Records.Num(); ++RecordIndex)
+		{
+			const FPersonCapabilityRecord& Record = Records[RecordIndex];
+			if (Record.PersonId == PersonId && Record.SkillTypeId == SkillTypeId)
+			{
+				return RecordIndex;
+			}
+		}
+
+		return INDEX_NONE;
+	}
+
 	/** Quantity of a good type held, or zero when the inventory holds none of it. */
 	int32 GetEntryQuantity(const TArray<FInventoryEntry>& Entries, FGoodTypeId GoodTypeId)
 	{
@@ -764,6 +780,38 @@ EPersonWorkResult FSimulationRegistry::RemovePersonWork(FPersonId PersonId)
 	return EPersonWorkResult::Success;
 }
 
+EPersonCapabilityResult FSimulationRegistry::AddPersonCapability(
+	FPersonId PersonId, FSkillTypeId SkillTypeId)
+{
+	// All validation precedes any append so a rejected pair leaves storage unchanged.
+	if (!ContainsPerson(PersonId))
+	{
+		return EPersonCapabilityResult::UnknownPerson;
+	}
+
+	if (!ContainsSkillType(SkillTypeId))
+	{
+		return EPersonCapabilityResult::UnknownSkillType;
+	}
+
+	if (FindPersonCapabilityIndex(PersonCapabilityRecords, PersonId, SkillTypeId) != INDEX_NONE)
+	{
+		return EPersonCapabilityResult::AlreadyHasCapability;
+	}
+
+	const int32 RecordIndex = PersonCapabilityRecords.AddDefaulted();
+	FPersonCapabilityRecord& CapabilityRecord = PersonCapabilityRecords[RecordIndex];
+	CapabilityRecord.PersonId = PersonId;
+	CapabilityRecord.SkillTypeId = SkillTypeId;
+
+	return EPersonCapabilityResult::Success;
+}
+
+bool FSimulationRegistry::PersonHasCapability(FPersonId PersonId, FSkillTypeId SkillTypeId) const
+{
+	return FindPersonCapabilityIndex(PersonCapabilityRecords, PersonId, SkillTypeId) != INDEX_NONE;
+}
+
 void FSimulationRegistry::ApplyGoodsAddition(
 	FInventoryRecord& InventoryRecord, FGoodTypeId GoodTypeId, int32 Quantity)
 {
@@ -996,6 +1044,7 @@ bool FSimulationRegistry::ValidateInvariants(FString& OutFailureDescription) con
 		&& ValidateGoodTypeRecords(OutFailureDescription)
 		&& ValidateWorkTypeRecords(OutFailureDescription)
 		&& ValidateSkillTypeRecords(OutFailureDescription)
+		&& ValidatePersonCapabilityRecords(OutFailureDescription)
 		&& ValidateInventoryRecords(OutFailureDescription);
 }
 
@@ -1534,6 +1583,48 @@ bool FSimulationRegistry::ValidateSkillTypeRecords(FString& OutFailureDescriptio
 				OutFailureDescription = FString::Printf(
 					TEXT("Skill type slots %d and %d share the authored key '%s'."),
 					EarlierIndex, RecordIndex, *SkillTypeRecord.AuthoredKey.ToString());
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+bool FSimulationRegistry::ValidatePersonCapabilityRecords(FString& OutFailureDescription) const
+{
+	for (int32 RecordIndex = 0; RecordIndex < PersonCapabilityRecords.Num(); ++RecordIndex)
+	{
+		const FPersonCapabilityRecord& CapabilityRecord = PersonCapabilityRecords[RecordIndex];
+
+		if (!ContainsPerson(CapabilityRecord.PersonId))
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Person capability slot %d names unresolvable person %s."),
+				RecordIndex, *CapabilityRecord.PersonId.ToString());
+			return false;
+		}
+
+		if (!ContainsSkillType(CapabilityRecord.SkillTypeId))
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Person capability slot %d names unresolvable skill type %s."),
+				RecordIndex, *CapabilityRecord.SkillTypeId.ToString());
+			return false;
+		}
+
+		for (int32 EarlierIndex = 0; EarlierIndex < RecordIndex; ++EarlierIndex)
+		{
+			const FPersonCapabilityRecord& EarlierRecord = PersonCapabilityRecords[EarlierIndex];
+			if (EarlierRecord.PersonId == CapabilityRecord.PersonId
+				&& EarlierRecord.SkillTypeId == CapabilityRecord.SkillTypeId)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("Person capability slots %d and %d share person %s and skill type %s."),
+					EarlierIndex,
+					RecordIndex,
+					*CapabilityRecord.PersonId.ToString(),
+					*CapabilityRecord.SkillTypeId.ToString());
 				return false;
 			}
 		}
