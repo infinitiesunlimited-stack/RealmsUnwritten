@@ -13,6 +13,7 @@ The architecture must:
 - Keep physical goods, land, ownership, and knowledge auditable.
 - Allow simulation, AI, visualization, and UI to evolve independently.
 - Make small-settlement detail and large-polity delegation compatible.
+- Keep civilization, settlement, and battle as different resolutions of one persistent world.
 - Support save migration, automated tests, deterministic diagnostics, and headless simulation.
 - Express regional and historical variation primarily through validated data and policies.
 
@@ -109,8 +110,8 @@ The systems below define expected boundaries, not a mandate to build them now.
 | Demography and Kinship | Birth, age, death, family links, cultural origin | Household, migration, inheritance, labor, history |
 | Household | Membership, domestic needs, pooled decisions, residence, household wealth | Person, property, inventories, market, migration |
 | Land and Property | Parcels, boundaries, tenure, rights, access, succession | Settlement, field, building, roads, household, government |
-| Spatial and Settlement | Settlement extent, addresses, roads, routes, service areas, membership | Property, logistics, construction, governance, presentation |
-| Building and Construction | Building instances, condition, fabric, extensions, functional spaces | Property, inventories, workplaces, housing, historical record |
+| Spatial and Settlement | Settlement extent, addresses, roads, routes, service areas, membership; inherited form that constrains later growth | Property, logistics, construction, governance, presentation |
+| Building and Construction | Building instances, condition, fabric, extensions, functional spaces; vacancy, reuse, replacement, and traces when those lifecycles exist | Property, inventories, workplaces, housing, historical record |
 | Occupation and Labor | Jobs, qualifications, assignment, availability, work commitments | Person, household, production, logistics, institutions |
 | Production | Recipes/processes, batches, work sites, tools, input/output transformation | Labor, inventory, building, knowledge, power sources |
 | Resources and Inventory | Resource definitions, lots, quantity, quality, custody, reservations | Production, logistics, households, trade, military |
@@ -122,7 +123,7 @@ The systems below define expected boundaries, not a mandate to build them now.
 | Institution and Delegation | Offices, membership, jurisdiction, mandates, delegated policies | Guilds, councils, estates, schools, military, government |
 | Polity and Governance | Titles, offices, claims, law, taxation, obligations, legitimacy | Settlements, property, institutions, diplomacy, warfare |
 | Diplomacy and Regional Trade | Relations, agreements, routes, cross-border movement | Polities, merchants, migration, knowledge, logistics |
-| Military and Warfare | Forces, command, training, equipment, morale, formation, campaigns | People, economy, logistics, terrain, polity, knowledge |
+| Military and Warfare | Forces composed from simulated people, command, training, equipment, morale, formation, campaigns; casualties and supply returned to civilization | People, economy, logistics, terrain, polity, knowledge |
 | Event and World Memory | Significant facts, provenance, chronicles, entity timelines | Receives filtered domain events; serves UI and historical effects |
 | Persistence and Migration | Save snapshots, schema versions, compatibility, validation | Serializes authoritative data and required scheduler state |
 | Diagnostics and Telemetry | Invariants, causal traces, performance budgets, replay seeds | Observes all systems without becoming gameplay authority |
@@ -184,6 +185,21 @@ Level of detail applies separately to visualization, decision-making, and simula
 
 Simulation LOD must not invent or delete people or goods. Aggregation is allowed only behind documented conservation and de-aggregation rules. A distant person may have a coarse schedule, but their identity, household, job, location state, and consequential possessions remain authoritative.
 
+These LODs serve three player-facing resolutions of the same world:
+
+```text
+CIVILIZATION SCALE
+Kingdom / region / politics / economy / war
+        ↓
+SETTLEMENT SCALE
+Households / production / construction / trade
+        ↓
+BATTLE SCALE
+People / formations / equipment / terrain / command
+```
+
+A battle may increase local simulation detail. It must not replace the settlement's people, goods, equipment, or provenance with a parallel combat model. Future military logistics, when built, must use the same physical custody and movement path as other goods rather than an abstract global supply pool.
+
 ### Spatial partitioning
 
 The simulation should index entities by logical regions, settlements, parcels, routes, and proximity queries without treating streamed Unreal levels as authority. Only active partitions need dense pathing and presentation updates. Cross-partition transfers use explicit journey/transit state.
@@ -193,10 +209,10 @@ The simulation should index entities by logical regions, settlements, parcels, r
 AI is hierarchical and budgeted:
 
 - **Person routines** select among available, authorized actions based on commitments and needs.
-- **Household policies** handle domestic budgets, consumption, work preferences, property use, and migration consideration.
+- **Household policies** handle domestic budgets, consumption, work preferences, property use, and migration consideration. When construction exists, ordinary household buildings and adaptations are household decisions inside land, access, resource, and institutional constraints—not unrestricted sprawl and not a requirement that the player place each structure.
 - **Work coordinators** expose jobs and production needs rather than directly puppeting every worker.
-- **Settlement/institution planners** allocate mandates, projects, access rules, and priorities.
-- **Polity and military planners** operate through law, budgets, appointments, diplomacy, and command structures.
+- **Settlement/institution planners** allocate mandates, projects, access rules, land-use constraints, and priorities, including commissioned major works. They should change conditions rather than stamp every domestic building.
+- **Polity and military planners** operate through law, budgets, appointments, diplomacy, and command structures, raising and directing forces composed of simulated people rather than spawning a disconnected army.
 
 Higher-level AI should change constraints and priorities; it should not bypass lower-level material requirements. AI computation uses time budgets, staggered reviews, cached queries, and invalidation on meaningful events. Expensive path searches and market searches require queues and budgets.
 

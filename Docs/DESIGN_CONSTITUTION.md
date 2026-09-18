@@ -121,6 +121,40 @@ The terms **MUST**, **MUST NOT**, **SHOULD**, and **MAY** describe requirement s
 - Prototype-specific simplifications MUST be labeled and isolated behind concepts compatible with the intended architecture.
 - A future system MUST NOT be implemented merely because the architecture acknowledges that it will eventually exist.
 
+### DC-17 — The player shapes development; the population develops within it
+
+- The player MUST operate primarily at civilization, institutional, and planning scale: shaping conditions, authorizing, commissioning, reserving land, constraining use, and, where authority permits, placing major works.
+- Ordinary household development MUST NOT require the player to place each cottage, barn, shed, garden, store, small workshop, or similar domestic structure. Households SHOULD develop their own property.
+- Autonomous development MUST remain inside physical and social constraints: available land, property boundaries, access, terrain, water where relevant, household resources, labor, materials, economic need, existing infrastructure, custom, institutions, and law. It MUST NOT be unrestricted procedural sprawl.
+- Growth SHOULD consider existing occupied or vacant property, recoverable structures, infill, and inherited settlement form before outward expansion. Reuse MUST NOT be an absolute deterministic rule; new construction MAY be the sensible choice under demand, availability, economics, authority, or geography.
+- Direct player placement remains legitimate for major infrastructure and other interventions allowed by the civilization's political and institutional structure. This law forbids treating inhabited fabric as a player-stamped grid. It is not an absolute ban on player building.
+
+### DC-18 — The world remembers its development
+
+This law extends DC-07 and DC-15 for the built environment.
+
+- Meaningful previous physical states SHOULD persist. A later generation MUST NOT begin as though the map were empty of inherited structures, properties, roads, and traces.
+- Abandonment MUST NOT automatically delete a structure or property. Age MUST NOT automatically destroy it. Buildings MAY be repaired, vacated, reoccupied, restored, expanded, adapted, demolished, replaced, or left as ruins or other physical traces.
+- Settlements MUST be able to grow, stagnate, contract, partially abandon, recover, reuse old space, and expand again. Population decline MAY leave vacant property, unused infrastructure, reduced cultivation, and ruins; recovery MAY return some of those assets to use.
+- Historical persistence MUST create constraints and opportunities. It MUST NOT freeze land against subdivision, combination, conversion, demolition, replacement, infrastructure, or later denser use.
+- Persistent structures and properties SHOULD retain enough provenance to explain construction, occupation, repair, abandonment, restoration, change of use, and destruction or rebuilding at the coarsest level that still supports gameplay. These lifecycle examples are conceptual; they are not a frozen enumeration or schema.
+
+### DC-19 — The army arises from the civilization
+
+- Military forces MUST arise from the civilization that fields them: its people, households, resources, occupations, skills, equipment, animals, institutions, obligations, political relationships, leadership, knowledge, infrastructure, and logistical capacity.
+- Future manpower MUST originate from persistent simulated people, not a disposable military population. A person in service MUST NOT remain fully available as civilian labor. Return, injury, capture, desertion, or death happens to that same person and MUST return consequences to household and civilization.
+- The project MUST NOT become a civilization simulator with shallow disconnected warfare, or a battle simulator whose civilization exists primarily to manufacture units.
+- Military capability SHOULD emerge from those simulated causes. Arbitrary permanent cultural combat bonuses MUST NOT substitute for practice, institutions, equipment, organization, geography, or economy (DC-09, DC-14).
+- Future military supply and equipment SHOULD originate in production, possession, procurement, obligation, trade, or capture, and SHOULD move as physical goods (DC-04). They MUST NOT appear solely because a generic recruitment control was pressed.
+- The player manages the civilization and exercises strategic and appropriate tactical authority. The player is not an individual battlefield character. This law constrains later architecture; it does not authorize military implementation.
+
+### DC-20 — One world at several resolutions
+
+- Civilization/polity scale, settlement scale, and battle scale MUST be views of the same persistent world. They MUST NOT be disconnected games with incompatible people, goods, equipment, or provenance.
+- Tactical combat MAY raise local simulation detail. It MUST NOT create a second population, economy, inventory, or history model.
+- Strategic/civilization depth and tactical battle depth are both first-class goals. When tactical simulation is active, resolution MUST NOT collapse to a single abstract army-strength comparison.
+- Scaling and LOD (DC-11) MAY vary update frequency and representation by relevance, but identity, custody, location, and consequential history MUST remain authoritative across scales.
+
 ## Simulation integrity rules
 
 The authoritative simulation must maintain these invariants:
@@ -185,3 +219,4 @@ Before approving a feature, ask:
 8. Is the historical claim appropriately scoped?
 9. Does it preserve unscripted futures?
 10. Is this the smallest feature that proves the intended value?
+11. If it places buildings or raises forces, does it treat ordinary fabric and manpower as simulated people and inherited place, or as player-stamped and spawned content?

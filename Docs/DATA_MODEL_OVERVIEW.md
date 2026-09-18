@@ -73,6 +73,7 @@ Important rules:
 - A person has at most one primary household at a time.
 - Household membership and residence are separate; a person may travel or lodge elsewhere.
 - Occupation is an identity/competence category; a job assignment is actual work.
+- When military service exists, it is a commitment or state of this person, not a separately spawned unit identity. Civilian labor must not remain fully available as if the person were still at home.
 - Current animation, visible destination marker, and UI selection are not person state.
 - A person may be dormant or coarsely scheduled off-screen without losing identity.
 
@@ -137,6 +138,7 @@ Important rules:
 
 - The definition describes capabilities; the instance describes this structure and its history.
 - A building does not create workers, residents, or resources.
+- A building's identity SHOULD survive vacancy, neglect, abandonment, restoration, and change of use until demolition or replacement is explicit. Abandonment is not deletion.
 - Production belongs to an explicit process at a capable site, not to elapsed Actor animation.
 - Mesh, material instance, streamed Actor, and damage VFX are presentation state.
 
@@ -279,6 +281,7 @@ Important rules:
 
 - Population, stocks, and production totals are derived from underlying entities.
 - Physical inclusion, legal jurisdiction, market service, and cultural affiliation may differ.
+- Physical settlement form SHOULD persist through demographic growth and contraction; unused structures, vacant property, and traces remain until an explicit disposition.
 - A settlement provides query and governance scope; it does not directly mutate every member domain.
 - Settlement summaries must identify their timestamp and aggregation rules.
 

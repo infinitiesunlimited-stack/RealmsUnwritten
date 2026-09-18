@@ -105,6 +105,7 @@ Candidate capabilities:
 
 - Expanded materials and craft chains, selected for dependency coverage rather than quantity.
 - Construction, repair, modification, condition, and visible building chronology.
+- Ordinary household structures developed by households within land, access, resource, and institutional constraints; player-commissioned major works rather than player-placed cottages.
 - Dynamic offers/prices at local-market scale, contracts, wages, rents, and basic credit only as research supports.
 - Enterprise/workshop operation distinct from household identity where needed.
 - Tools, quality, maintenance, byproducts, fuel, and storage specialization.
@@ -114,7 +115,8 @@ Candidate capabilities:
 Exit gate:
 
 - At least two interacting production sectors respond to price, access, skill, and logistics.
-- Household property changes arise from accumulated means and decisions.
+- Household property changes arise from accumulated means and decisions, including reuse, repair, and redevelopment of existing fabric where those systems exist.
+- Construction does not require the player to place every ordinary domestic building.
 - Economic abstraction policies are documented and causally inspectable.
 - Goods-lot and market workloads meet scale budgets.
 
@@ -210,6 +212,7 @@ Candidate capabilities:
 - Individual or safely grouped equipment linked to physical supply.
 - Formation, command, training, experience, morale, fatigue, and terrain.
 - Campaign movement, food, ammunition where relevant, replacement, and medical/casualty consequences.
+- Tactical battles that remain spatially and materially resolved when combat simulation is active, not a disconnected army model or a single abstract strength comparison.
 - A narrow historically appropriate roster before broad content.
 - Defensive sites and siege concepts only after field-combat foundations are proven.
 - Competitive telemetry and AI using ordinary constraints.
