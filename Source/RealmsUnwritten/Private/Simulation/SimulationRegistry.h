@@ -287,6 +287,33 @@ enum class EPersonCapabilityResult : uint8
 };
 
 /**
+ * Outcome of increasing accumulated practice on an existing person-capability relationship.
+ *
+ * This is an authority primitive, not a learning system: it records an increment a caller
+ * has already decided, without deciding why practice was earned or what proficiency is.
+ */
+enum class EPersonCapabilityPracticeResult : uint8
+{
+	/** Accumulated practice increased by the requested amount. */
+	Success,
+
+	/** The person identifier does not resolve to a record; no state changed. */
+	UnknownPerson,
+
+	/** The skill type identifier does not resolve to a record; no state changed. */
+	UnknownSkillType,
+
+	/** No (Person, SkillType) relationship is recorded; no state changed. */
+	MissingCapability,
+
+	/** The increment was zero; no state changed. */
+	InvalidAmount,
+
+	/** The increment would exceed uint32 range; no state changed. */
+	Overflow
+};
+
+/**
  * Authoritative owner of person, household, settlement, property, good type, inventory,
  * physical site, work type, skill type, and person-capability relationship records.
  *
@@ -302,8 +329,9 @@ enum class EPersonCapabilityResult : uint8
  * site without the site listing workers, because assignment is not occupancy. Person
  * capability is a sparse one-sided relationship collection keyed by (Person, SkillType),
  * stored on the registry rather than on the person record, with no reverse skill-to-people
- * index. Callers therefore cannot edit a record directly, and cannot leave either side of a
- * two-sided relationship disagreeing with the other.
+ * index. Accumulated practice lives on that relationship and increases only through
+ * AddPersonCapabilityPractice. Callers therefore cannot edit a record directly, and cannot
+ * leave either side of a two-sided relationship disagreeing with the other.
  *
  * Inventory contents are one-sided rather than a relationship, so they are mutated through
  * AddGoods, RemoveGoods, and TransferGoods. No caller receives a mutable inventory, so the
@@ -648,10 +676,20 @@ public:
 	 * this skill type.
 	 *
 	 * The pair is unique. Duplicate pairs, unknown people, and unknown skill types are
-	 * rejected with no mutation. This does not assign CurrentWork, imply occupation, store
-	 * proficiency, or create missing people or skill types.
+	 * rejected with no mutation. A newly recorded relationship starts with AccumulatedPractice
+	 * of zero. This does not assign CurrentWork, imply occupation, store proficiency, or
+	 * create missing people or skill types.
 	 */
 	EPersonCapabilityResult AddPersonCapability(FPersonId PersonId, FSkillTypeId SkillTypeId);
+
+	/**
+	 * Increases accumulated practice on an existing person-capability relationship.
+	 *
+	 * The relationship must already exist: this does not acquire a capability. Zero amounts
+	 * and increments that would overflow uint32 are rejected. Practice never decreases.
+	 */
+	EPersonCapabilityPracticeResult AddPersonCapabilityPractice(
+		FPersonId PersonId, FSkillTypeId SkillTypeId, uint32 Amount);
 
 	/**
 	 * Whether a person-capability relationship is currently recorded for this pair.
@@ -660,6 +698,15 @@ public:
 	 * unable to act. Unknown identifiers likewise report no recorded relationship.
 	 */
 	bool PersonHasCapability(FPersonId PersonId, FSkillTypeId SkillTypeId) const;
+
+	/**
+	 * Accumulated practice for this pair, if the relationship exists.
+	 *
+	 * A populated optional containing 0 is an acquired capability with no quantified
+	 * practice yet. An unset optional means no relationship is recorded. The returned
+	 * value is a copy and cannot mutate registry storage.
+	 */
+	TOptional<uint32> GetPersonCapabilityPractice(FPersonId PersonId, FSkillTypeId SkillTypeId) const;
 
 	/**
 	 * Creates a positive quantity of a good type inside an inventory, creating the entry if

@@ -803,13 +803,61 @@ EPersonCapabilityResult FSimulationRegistry::AddPersonCapability(
 	FPersonCapabilityRecord& CapabilityRecord = PersonCapabilityRecords[RecordIndex];
 	CapabilityRecord.PersonId = PersonId;
 	CapabilityRecord.SkillTypeId = SkillTypeId;
+	CapabilityRecord.AccumulatedPractice = 0;
 
 	return EPersonCapabilityResult::Success;
+}
+
+EPersonCapabilityPracticeResult FSimulationRegistry::AddPersonCapabilityPractice(
+	FPersonId PersonId, FSkillTypeId SkillTypeId, uint32 Amount)
+{
+	// All validation precedes any write so a rejected increment leaves practice unchanged.
+	if (!ContainsPerson(PersonId))
+	{
+		return EPersonCapabilityPracticeResult::UnknownPerson;
+	}
+
+	if (!ContainsSkillType(SkillTypeId))
+	{
+		return EPersonCapabilityPracticeResult::UnknownSkillType;
+	}
+
+	const int32 RecordIndex = FindPersonCapabilityIndex(PersonCapabilityRecords, PersonId, SkillTypeId);
+	if (RecordIndex == INDEX_NONE)
+	{
+		return EPersonCapabilityPracticeResult::MissingCapability;
+	}
+
+	if (Amount == 0)
+	{
+		return EPersonCapabilityPracticeResult::InvalidAmount;
+	}
+
+	FPersonCapabilityRecord& CapabilityRecord = PersonCapabilityRecords[RecordIndex];
+	if (Amount > MAX_uint32 - CapabilityRecord.AccumulatedPractice)
+	{
+		return EPersonCapabilityPracticeResult::Overflow;
+	}
+
+	CapabilityRecord.AccumulatedPractice += Amount;
+	return EPersonCapabilityPracticeResult::Success;
 }
 
 bool FSimulationRegistry::PersonHasCapability(FPersonId PersonId, FSkillTypeId SkillTypeId) const
 {
 	return FindPersonCapabilityIndex(PersonCapabilityRecords, PersonId, SkillTypeId) != INDEX_NONE;
+}
+
+TOptional<uint32> FSimulationRegistry::GetPersonCapabilityPractice(
+	FPersonId PersonId, FSkillTypeId SkillTypeId) const
+{
+	const int32 RecordIndex = FindPersonCapabilityIndex(PersonCapabilityRecords, PersonId, SkillTypeId);
+	if (RecordIndex == INDEX_NONE)
+	{
+		return TOptional<uint32>();
+	}
+
+	return PersonCapabilityRecords[RecordIndex].AccumulatedPractice;
 }
 
 void FSimulationRegistry::ApplyGoodsAddition(
