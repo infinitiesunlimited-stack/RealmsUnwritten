@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 
+#include "Simulation/CurrentWork.h"
 #include "Simulation/SimulationIds.h"
 
 /**
@@ -22,7 +23,10 @@ enum class EPersonLifeState : uint8
  * This record is plain simulation data. It is not an Actor, Pawn, Character, or UObject,
  * it requires no loaded map, and it does not tick. Names are display identity only;
  * FPersonId is the sole identity. Records are owned exclusively by FSimulationRegistry,
- * which is also the only writer of HouseholdId.
+ * which is also the only writer of HouseholdId and CurrentWork.
+ *
+ * Occupation is not stored here. CurrentWork is a single exclusive labor commitment, not a
+ * profession, and targeting a physical site is not proof of physical presence.
  */
 struct FPersonRecord
 {
@@ -47,4 +51,12 @@ struct FPersonRecord
 
 	/** Primary household, or an invalid identifier when the person belongs to none. */
 	FHouseholdId HouseholdId;
+
+	/**
+	 * Authoritative current work commitment. Nowhere until assigned, and at most one.
+	 *
+	 * Targeting a physical site does not mean the person is at that site. Occupation is a
+	 * separate concept and is not recorded here.
+	 */
+	FCurrentWork CurrentWork;
 };

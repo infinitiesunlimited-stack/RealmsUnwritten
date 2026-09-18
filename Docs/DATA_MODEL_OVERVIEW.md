@@ -72,7 +72,7 @@ Important rules:
 
 - A person has at most one primary household at a time.
 - Household membership and residence are separate; a person may travel or lodge elsewhere.
-- Occupation is an identity/competence category; a job assignment is actual work.
+- Occupation is an identity/competence category; a job assignment is actual work. Prototype 0.1E stores one exclusive `CurrentWork` commitment on the person (`WORK_LABOR.md`); that is not occupation and not the long-term job-assignment record.
 - When military service exists, it is a commitment or state of this person, not a separately spawned unit identity. Civilian labor must not remain fully available as if the person were still at home.
 - Current animation, visible destination marker, and UI selection are not person state.
 - A person may be dormant or coarsely scheduled off-screen without losing identity.
@@ -145,6 +145,8 @@ Important rules:
 ### Job
 
 A `Job` represents work needed or a durable workplace/role, depending on subtype. The model must not conflate profession, offered work, and accepted commitment.
+
+Prototype 0.1E implements only the exclusive person-side commitment: `Person.CurrentWork` names a work type and a stationary physical site. That is a labeled simplification of the assignment/commitment role, not a job request, not occupation, and not physical presence. See `WORK_LABOR.md`.
 
 Recommended conceptual split:
 
@@ -358,6 +360,7 @@ The smallest valid prototype model is:
 
 ```text
 Person -> Household -> Residence/Property -> Settlement
+Person -> CurrentWork (0.1E exclusive commitment) -> WorkType + PhysicalSite
 Person -> Job Assignment -> Farming/Hauling/Production Work
 Property -> Field -> Wheat Crop Cycle -> Wheat Resource Lot
 Building/Site -> Inventory -> Resource Lots

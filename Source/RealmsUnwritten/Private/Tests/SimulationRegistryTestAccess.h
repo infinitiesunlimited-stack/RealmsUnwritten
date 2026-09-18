@@ -22,9 +22,19 @@ struct FSimulationRegistryTestAccess
 		return Registry.GoodTypeRecords;
 	}
 
+	static TArray<FWorkTypeRecord>& WorkTypeRecords(FSimulationRegistry& Registry)
+	{
+		return Registry.WorkTypeRecords;
+	}
+
 	static TArray<FInventoryRecord>& InventoryRecords(FSimulationRegistry& Registry)
 	{
 		return Registry.InventoryRecords;
+	}
+
+	static TArray<FPersonRecord>& PersonRecords(FSimulationRegistry& Registry)
+	{
+		return Registry.PersonRecords;
 	}
 
 	static TArray<FPhysicalSiteRecord>& PhysicalSiteRecords(FSimulationRegistry& Registry)

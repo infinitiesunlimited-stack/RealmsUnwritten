@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Misc/Optional.h"
 
+#include "Simulation/CurrentWork.h"
 #include "Simulation/GoodTypeRecord.h"
 #include "Simulation/GoodsAuditRecord.h"
 #include "Simulation/HouseholdRecord.h"
@@ -12,6 +13,7 @@
 #include "Simulation/PropertyRecord.h"
 #include "Simulation/SettlementRecord.h"
 #include "Simulation/SimulationIds.h"
+#include "Simulation/WorkTypeRecord.h"
 
 /**
  * Values accepted when creating a person. A new person starts alive and with no household.
@@ -233,8 +235,37 @@ enum class ETransferGoodsResult : uint8
 };
 
 /**
- * Authoritative owner of person, household, settlement, property, good type, inventory, and
- * physical site records.
+ * Outcome of changing a person's exclusive current work commitment.
+ *
+ * Assigning work, replacing it, and taking it away are all authoritative state changes.
+ * None of them is physical presence: nothing walks, no time passes, and no route is
+ * required or checked. The person is committed to work targeted at a site, not proven to
+ * be at that site.
+ */
+enum class EPersonWorkResult : uint8
+{
+	/** The person's current work changed. */
+	Success,
+
+	/** The person already has exactly this work type at this site; no state changed. */
+	AlreadyAssigned,
+
+	/** The person identifier does not resolve to a record; no state changed. */
+	UnknownPerson,
+
+	/** The work type identifier does not resolve to a record; no state changed. */
+	UnknownWorkType,
+
+	/** The physical site identifier does not resolve to a record; no state changed. */
+	UnknownSite,
+
+	/** The person already has no work, so there was nothing to remove. No state changed. */
+	NotAssigned
+};
+
+/**
+ * Authoritative owner of person, household, settlement, property, good type, inventory,
+ * physical site, and work type records.
  *
  * The registry is plain C++: no UObject, no Actor, no tick, no loaded map, and no
  * Blueprint exposure. Anything that needs a record resolves it by stable identifier
@@ -244,8 +275,10 @@ enum class ETransferGoodsResult : uint8
  * storage. Each two-sided relationship is mutated only through its own pair of public
  * operations, each funnelling into a single private transition: person/household
  * membership, household/settlement location, household/property residence, and
- * inventory/site location. Callers therefore cannot edit a record directly, and cannot
- * leave either side of a relationship disagreeing with the other.
+ * inventory/site location. Current work is one-sided: it lives on the person and names a
+ * site without the site listing workers, because assignment is not occupancy. Callers
+ * therefore cannot edit a record directly, and cannot leave either side of a two-sided
+ * relationship disagreeing with the other.
  *
  * Inventory contents are one-sided rather than a relationship, so they are mutated through
  * AddGoods, RemoveGoods, and TransferGoods. No caller receives a mutable inventory, so the
@@ -321,6 +354,19 @@ public:
 	 */
 	FGoodTypeId CreateGoodType(FName AuthoredKey, const FString& DisplayName);
 
+	/**
+	 * Creates a work type under a durable authored key and returns its runtime handle.
+	 *
+	 * The authored key is the work type's definition identity and must be supplied by the
+	 * caller: `None` is rejected, and so is a key already in use among work types. Good-type
+	 * keys are a separate namespace. The display name is display data only, so two work
+	 * types with different authored keys may share one.
+	 *
+	 * Returns an invalid handle, having changed nothing and consumed no runtime handle, when
+	 * the authored key is None or already taken.
+	 */
+	FWorkTypeId CreateWorkType(FName AuthoredKey, const FString& DisplayName);
+
 	/** Creates an empty inventory, holding no goods and located nowhere. */
 	FInventoryId CreateInventory();
 
@@ -341,6 +387,9 @@ public:
 
 	/** Whether the identifier resolves to a good type record. Safe for any identifier value. */
 	bool ContainsGoodType(FGoodTypeId GoodTypeId) const;
+
+	/** Whether the identifier resolves to a work type record. Safe for any identifier value. */
+	bool ContainsWorkType(FWorkTypeId WorkTypeId) const;
 
 	/** Whether the identifier resolves to an inventory record. Safe for any identifier value. */
 	bool ContainsInventory(FInventoryId InventoryId) const;
@@ -400,6 +449,20 @@ public:
 	TOptional<FGoodTypeId> FindGoodTypeIdByKey(FName AuthoredKey) const;
 
 	/**
+	 * Reads a work type record, or returns an unset optional for an identifier that does not
+	 * resolve. The result is a copy with the same contract as FindPerson.
+	 */
+	TOptional<FWorkTypeRecord> FindWorkType(FWorkTypeId WorkTypeId) const;
+
+	/**
+	 * Resolves a durable authored key to the runtime handle it currently maps to among work
+	 * types, or returns an unset optional when no work type carries that key.
+	 *
+	 * Good-type keys are not consulted. The display name plays no part in resolution.
+	 */
+	TOptional<FWorkTypeId> FindWorkTypeIdByKey(FName AuthoredKey) const;
+
+	/**
 	 * Reads an inventory record, or returns an unset optional for an identifier that does not
 	 * resolve. The result is a copy with the same contract as FindPerson, including a copy of
 	 * the entry list, and is intended for inspection and tests.
@@ -434,6 +497,9 @@ public:
 
 	/** Number of good type records held. Derived from storage. */
 	int32 GetGoodTypeCount() const { return GoodTypeRecords.Num(); }
+
+	/** Number of work type records held. Derived from storage. */
+	int32 GetWorkTypeCount() const { return WorkTypeRecords.Num(); }
 
 	/** Number of inventory records held. Derived from storage. */
 	int32 GetInventoryCount() const { return InventoryRecords.Num(); }
@@ -501,6 +567,26 @@ public:
 	 * inventory to another site instead.
 	 */
 	EInventoryLocationResult RemoveInventoryLocation(FInventoryId InventoryId);
+
+	/**
+	 * Makes this the person's exclusive current work, replacing any commitment they already
+	 * have so that they never hold two at once.
+	 *
+	 * This is the authoritative statement of what the person is assigned to do, not an act
+	 * of travelling. Nothing walks, no presence is recorded, no distance or route is
+	 * considered, and the person is not proven to be at the site. Household membership,
+	 * settlement, and site purpose are not required and not checked. Goods are not created,
+	 * moved, or destroyed.
+	 */
+	EPersonWorkResult AssignPersonWork(FPersonId PersonId, FWorkTypeId WorkTypeId, FPhysicalSiteId PhysicalSiteId);
+
+	/**
+	 * Takes away the person's current work, leaving it nowhere.
+	 *
+	 * Permitted only while the person currently has work. A person with none is rejected
+	 * with NotAssigned. No site worker list is updated, because sites do not list workers.
+	 */
+	EPersonWorkResult RemovePersonWork(FPersonId PersonId);
 
 	/**
 	 * Creates a positive quantity of a good type inside an inventory, creating the entry if
@@ -591,6 +677,8 @@ private:
 
 	const FGoodTypeRecord* ResolveGoodType(FGoodTypeId GoodTypeId) const;
 
+	const FWorkTypeRecord* ResolveWorkType(FWorkTypeId WorkTypeId) const;
+
 	const FInventoryRecord* ResolveInventory(FInventoryId InventoryId) const;
 
 	FPersonRecord* ResolvePersonMutable(FPersonId PersonId);
@@ -622,6 +710,13 @@ private:
 	 * list it.
 	 */
 	void SetInventoryLocation(FInventoryRecord& InventoryRecord, FInventoryLocation NewLocation);
+
+	/**
+	 * The single authoritative person current-work write. Assignment is one-sided: the
+	 * person names a site, and the site does not list workers, because commitment is not
+	 * occupancy.
+	 */
+	void SetPersonWork(FPersonRecord& PersonRecord, const FCurrentWork& NewWork);
 
 	/**
 	 * The two authoritative inventory quantity mutations, and the only code that writes an
@@ -663,6 +758,8 @@ private:
 
 	bool ValidateGoodTypeRecords(FString& OutFailureDescription) const;
 
+	bool ValidateWorkTypeRecords(FString& OutFailureDescription) const;
+
 	bool ValidateInventoryRecords(FString& OutFailureDescription) const;
 
 	TArray<FPersonRecord> PersonRecords;
@@ -676,6 +773,8 @@ private:
 	TArray<FPhysicalSiteRecord> PhysicalSiteRecords;
 
 	TArray<FGoodTypeRecord> GoodTypeRecords;
+
+	TArray<FWorkTypeRecord> WorkTypeRecords;
 
 	TArray<FInventoryRecord> InventoryRecords;
 

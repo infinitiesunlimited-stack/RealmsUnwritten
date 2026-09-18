@@ -8,6 +8,7 @@
 - **Scope:** Stationary physical sites, the Property → Site relationship, and explicit inventory location
 - **Describes:** Only what exists in the repository today
 - **Retires:** The Prototype 0.1C holderless-inventory waiver recorded in `GOODS_INVENTORY.md`
+- **Extended by:** `WORK_LABOR.md` (Prototype 0.1E), which targets current work at physical sites without listing workers on the site. Inventory location behaviour recorded here is unchanged.
 
 ## Purpose
 
@@ -326,7 +327,7 @@ Not implemented, and not scaffolded:
 - Buildings, rooms, functional spaces, construction
 - Carts, pack animals, ships, people-as-carriers
 - Roads, coordinates, geometry, movement, hauling, pathfinding
-- Production, farming, labor, markets
+- Production, farming, labor, markets — current-work commitments targeted at sites landed in 0.1E; sites still do not list workers, and work still does not produce goods
 - Storage capacity, weight, volume
 - Spoilage, weather, fire, theft
 - Lots, reservations

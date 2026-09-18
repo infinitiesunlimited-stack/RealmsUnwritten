@@ -5,7 +5,7 @@
 - **Role:** Implementation record for the Prototype 0.1C goods and inventory foundation
 - **Authority:** Subordinate to `DESIGN_CONSTITUTION.md`, `HIGH_LEVEL_ARCHITECTURE.md`, `DATA_MODEL_OVERVIEW.md`, and `PROTOTYPE_0_1_SCOPE.md`
 - **Extends:** `SIMULATION_FOUNDATION.md` (0.1A) and `SETTLEMENT_PROPERTY_RESIDENCE.md` (0.1B), neither of which is superseded
-- **Extended by:** `PHYSICAL_SITE_INVENTORY_LOCATION.md` (Prototype 0.1D), which locates inventories at physical sites and retires the holderless-inventory waiver
+- **Extended by:** `PHYSICAL_SITE_INVENTORY_LOCATION.md` (Prototype 0.1D), which locates inventories at physical sites and retires the holderless-inventory waiver, and `WORK_LABOR.md` (Prototype 0.1E), which adds work types as a second definition family. Work assignment does not mutate goods.
 - **Scope:** Good types, inventories, quantities, conserved transfer, and the goods audit trail
 - **Describes:** Only what exists in the repository today
 - **Revision:** Updated after Prototype 0.1D: inventories carry an explicit location; `AddGoods` and `TransferGoods` require a resolvable physical site; the 0.1C holderless-inventory waiver is retired
@@ -63,7 +63,7 @@ using FInventoryId = TSimulationId<FInventoryIdTag>;
 
 They inherit every property documented in 0.1A: phantom-typed, `explicit` raw-value construction that grants no capability, value `0` meaning "no entity", allocation by the registry only, hashable, and never a name. `ToString` yields `GoodType#3` / `Inventory#7`.
 
-Type safety needed no new mechanism. The accepted `TMutuallyDistinct` predicate covers later families by being handed a longer list. Prototype 0.1D currently asserts seven families including `FPhysicalSiteId`.
+Type safety needed no new mechanism. The accepted `TMutuallyDistinct` predicate covers later families by being handed a longer list. Prototype 0.1E currently asserts eight families including `FWorkTypeId`.
 
 ### Good type identity: durable key, runtime handle
 
@@ -524,7 +524,7 @@ Recorded rather than solved, per `AI_DEVELOPMENT_RULES.md`.
 
 Raised for review, not decided here. The earlier open questions — who owns the registry, the module split, and the four from 0.1B — all still stand. This slice adds:
 
-1. **Definition identifiers — answered for good types.** The review's decision split the two roles: an `FName` authored key is the durable definition identity, and `FGoodTypeId` is a runtime handle. What remains open is whether the same shape should serve every future definition family (crops, processes, building archetypes, occupations, skills), and whether authored keys eventually need namespacing or versioning rules. Worth settling before a second definition family arrives, so the pattern is established once.
+1. **Definition identifiers — answered for good types, and reused for work types.** The review's decision split the two roles: an `FName` authored key is the durable definition identity, and a typed runtime handle is the cheap in-registry reference. Prototype 0.1E (`WORK_LABOR.md`) applies that same shape to `FWorkTypeRecord`. Crops, processes, building archetypes, occupations, and skills remain later definition families. Authored-key namespacing and versioning rules are still open.
 2. **Where does mobile custody live?** Stationary location is answered in 0.1D. Mobile holders remain a later tagged kind on `FInventoryLocation`, not a generic holder field. See `PHYSICAL_SITE_INVENTORY_LOCATION.md`.
 3. **When do aggregate stacks become lots, and what triggers the split?** The architecture lists aggregation thresholds as deferred. A concrete answer is needed before reservations, because a reservation against an aggregate quantity and a reservation against a lot are different designs.
 4. **Should the goods audit trail eventually move to the domain-event system?** A minimal trail now lives in the registry, which is the smallest thing that satisfies DC-04 for this slice. Once domain events, a simulation clock, and history retention exist, creation and destruction of goods are plausibly events rather than a private array — and the reason `FName` becomes a typed cause carrying its originating system. That migration, along with retention policy and whether the trail is ever persisted, should be decided before production and consumption run at volume.

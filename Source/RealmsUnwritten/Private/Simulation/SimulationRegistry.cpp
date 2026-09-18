@@ -227,6 +227,31 @@ FGoodTypeId FSimulationRegistry::CreateGoodType(FName AuthoredKey, const FString
 	return GoodTypeRecord.Id;
 }
 
+FWorkTypeId FSimulationRegistry::CreateWorkType(FName AuthoredKey, const FString& DisplayName)
+{
+	// Validated before anything is stored, so a rejected definition consumes no runtime
+	// handle and leaves the registry exactly as it was. Work-type keys are a separate
+	// namespace from good-type keys, so FindWorkTypeIdByKey is the uniqueness check.
+	if (AuthoredKey.IsNone())
+	{
+		return FWorkTypeId();
+	}
+
+	if (FindWorkTypeIdByKey(AuthoredKey).IsSet())
+	{
+		return FWorkTypeId();
+	}
+
+	const int32 RecordIndex = WorkTypeRecords.AddDefaulted();
+
+	FWorkTypeRecord& WorkTypeRecord = WorkTypeRecords[RecordIndex];
+	WorkTypeRecord.AuthoredKey = AuthoredKey;
+	WorkTypeRecord.Id = FromRecordIndex<FWorkTypeId>(RecordIndex);
+	WorkTypeRecord.Name = DisplayName;
+
+	return WorkTypeRecord.Id;
+}
+
 FInventoryId FSimulationRegistry::CreateInventory()
 {
 	const int32 RecordIndex = InventoryRecords.AddDefaulted();
@@ -266,6 +291,11 @@ bool FSimulationRegistry::ContainsPhysicalSite(FPhysicalSiteId PhysicalSiteId) c
 bool FSimulationRegistry::ContainsGoodType(FGoodTypeId GoodTypeId) const
 {
 	return ResolveGoodType(GoodTypeId) != nullptr;
+}
+
+bool FSimulationRegistry::ContainsWorkType(FWorkTypeId WorkTypeId) const
+{
+	return ResolveWorkType(WorkTypeId) != nullptr;
 }
 
 bool FSimulationRegistry::ContainsInventory(FInventoryId InventoryId) const
@@ -352,6 +382,34 @@ TOptional<FGoodTypeId> FSimulationRegistry::FindGoodTypeIdByKey(FName AuthoredKe
 	}
 
 	return TOptional<FGoodTypeId>();
+}
+
+TOptional<FWorkTypeRecord> FSimulationRegistry::FindWorkType(FWorkTypeId WorkTypeId) const
+{
+	if (const FWorkTypeRecord* WorkTypeRecord = ResolveWorkType(WorkTypeId))
+	{
+		return TOptional<FWorkTypeRecord>(*WorkTypeRecord);
+	}
+
+	return TOptional<FWorkTypeRecord>();
+}
+
+TOptional<FWorkTypeId> FSimulationRegistry::FindWorkTypeIdByKey(FName AuthoredKey) const
+{
+	if (AuthoredKey.IsNone())
+	{
+		return TOptional<FWorkTypeId>();
+	}
+
+	for (const FWorkTypeRecord& WorkTypeRecord : WorkTypeRecords)
+	{
+		if (WorkTypeRecord.AuthoredKey == AuthoredKey)
+		{
+			return TOptional<FWorkTypeId>(WorkTypeRecord.Id);
+		}
+	}
+
+	return TOptional<FWorkTypeId>();
 }
 
 TOptional<FInventoryRecord> FSimulationRegistry::FindInventory(FInventoryId InventoryId) const
@@ -597,6 +655,58 @@ EInventoryLocationResult FSimulationRegistry::RemoveInventoryLocation(FInventory
 	return EInventoryLocationResult::Success;
 }
 
+EPersonWorkResult FSimulationRegistry::AssignPersonWork(
+	FPersonId PersonId, FWorkTypeId WorkTypeId, FPhysicalSiteId PhysicalSiteId)
+{
+	// Every identifier is resolved before anything is written, so a rejected assignment
+	// cannot replace a valid commitment with a dangling one.
+	FPersonRecord* PersonRecord = ResolvePersonMutable(PersonId);
+	if (PersonRecord == nullptr)
+	{
+		return EPersonWorkResult::UnknownPerson;
+	}
+
+	if (!ContainsWorkType(WorkTypeId))
+	{
+		return EPersonWorkResult::UnknownWorkType;
+	}
+
+	if (!ContainsPhysicalSite(PhysicalSiteId))
+	{
+		return EPersonWorkResult::UnknownSite;
+	}
+
+	const FCurrentWork& CurrentWork = PersonRecord->CurrentWork;
+	if (CurrentWork.Kind == ECurrentWorkKind::PhysicalSite
+		&& CurrentWork.WorkTypeId == WorkTypeId
+		&& CurrentWork.PhysicalSiteId == PhysicalSiteId)
+	{
+		return EPersonWorkResult::AlreadyAssigned;
+	}
+
+	SetPersonWork(*PersonRecord, FCurrentWork::AtPhysicalSite(WorkTypeId, PhysicalSiteId));
+
+	return EPersonWorkResult::Success;
+}
+
+EPersonWorkResult FSimulationRegistry::RemovePersonWork(FPersonId PersonId)
+{
+	FPersonRecord* PersonRecord = ResolvePersonMutable(PersonId);
+	if (PersonRecord == nullptr)
+	{
+		return EPersonWorkResult::UnknownPerson;
+	}
+
+	if (!PersonRecord->CurrentWork.IsAssigned())
+	{
+		return EPersonWorkResult::NotAssigned;
+	}
+
+	SetPersonWork(*PersonRecord, FCurrentWork::Nowhere());
+
+	return EPersonWorkResult::Success;
+}
+
 void FSimulationRegistry::ApplyGoodsAddition(
 	FInventoryRecord& InventoryRecord, FGoodTypeId GoodTypeId, int32 Quantity)
 {
@@ -827,6 +937,7 @@ bool FSimulationRegistry::ValidateInvariants(FString& OutFailureDescription) con
 		&& ValidatePropertyRecords(OutFailureDescription)
 		&& ValidatePhysicalSiteRecords(OutFailureDescription)
 		&& ValidateGoodTypeRecords(OutFailureDescription)
+		&& ValidateWorkTypeRecords(OutFailureDescription)
 		&& ValidateInventoryRecords(OutFailureDescription);
 }
 
@@ -848,6 +959,53 @@ bool FSimulationRegistry::ValidatePersonRecords(FString& OutFailureDescription) 
 			OutFailureDescription = FString::Printf(
 				TEXT("%s stores a negative age of %d years."),
 				*PersonRecord.Id.ToString(), PersonRecord.AgeYears);
+			return false;
+		}
+
+		// Current work is independent of household membership: an unhoused person may hold a
+		// valid commitment, and a missing household must not skip these checks.
+		const FCurrentWork& CurrentWork = PersonRecord.CurrentWork;
+		if (CurrentWork.Kind == ECurrentWorkKind::None)
+		{
+			if (CurrentWork.WorkTypeId.IsValid())
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s has no work but names %s."),
+					*PersonRecord.Id.ToString(), *CurrentWork.WorkTypeId.ToString());
+				return false;
+			}
+
+			if (CurrentWork.PhysicalSiteId.IsValid())
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s has no work but names %s."),
+					*PersonRecord.Id.ToString(), *CurrentWork.PhysicalSiteId.ToString());
+				return false;
+			}
+		}
+		else if (CurrentWork.Kind == ECurrentWorkKind::PhysicalSite)
+		{
+			if (!ContainsWorkType(CurrentWork.WorkTypeId))
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s is assigned unresolvable %s."),
+					*PersonRecord.Id.ToString(), *CurrentWork.WorkTypeId.ToString());
+				return false;
+			}
+
+			if (!ContainsPhysicalSite(CurrentWork.PhysicalSiteId))
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("%s is assigned work at unresolvable %s."),
+					*PersonRecord.Id.ToString(), *CurrentWork.PhysicalSiteId.ToString());
+				return false;
+			}
+		}
+		else
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("%s has unsupported current-work kind %u."),
+				*PersonRecord.Id.ToString(), static_cast<uint32>(CurrentWork.Kind));
 			return false;
 		}
 
@@ -1256,6 +1414,41 @@ bool FSimulationRegistry::ValidateGoodTypeRecords(FString& OutFailureDescription
 	return true;
 }
 
+bool FSimulationRegistry::ValidateWorkTypeRecords(FString& OutFailureDescription) const
+{
+	for (int32 RecordIndex = 0; RecordIndex < WorkTypeRecords.Num(); ++RecordIndex)
+	{
+		const FWorkTypeRecord& WorkTypeRecord = WorkTypeRecords[RecordIndex];
+
+		if (ToRecordIndex(WorkTypeRecord.Id, WorkTypeRecords.Num()) != RecordIndex)
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Work type slot %d holds identifier %s."), RecordIndex, *WorkTypeRecord.Id.ToString());
+			return false;
+		}
+
+		if (WorkTypeRecord.AuthoredKey.IsNone())
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Work type slot %d has no authored key."), RecordIndex);
+			return false;
+		}
+
+		for (int32 EarlierIndex = 0; EarlierIndex < RecordIndex; ++EarlierIndex)
+		{
+			if (WorkTypeRecords[EarlierIndex].AuthoredKey == WorkTypeRecord.AuthoredKey)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("Work type slots %d and %d share the authored key '%s'."),
+					EarlierIndex, RecordIndex, *WorkTypeRecord.AuthoredKey.ToString());
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 bool FSimulationRegistry::ValidateInventoryRecords(FString& OutFailureDescription) const
 {
 	for (int32 RecordIndex = 0; RecordIndex < InventoryRecords.Num(); ++RecordIndex)
@@ -1390,6 +1583,12 @@ const FGoodTypeRecord* FSimulationRegistry::ResolveGoodType(FGoodTypeId GoodType
 {
 	const int32 RecordIndex = ToRecordIndex(GoodTypeId, GoodTypeRecords.Num());
 	return RecordIndex == INDEX_NONE ? nullptr : &GoodTypeRecords[RecordIndex];
+}
+
+const FWorkTypeRecord* FSimulationRegistry::ResolveWorkType(FWorkTypeId WorkTypeId) const
+{
+	const int32 RecordIndex = ToRecordIndex(WorkTypeId, WorkTypeRecords.Num());
+	return RecordIndex == INDEX_NONE ? nullptr : &WorkTypeRecords[RecordIndex];
 }
 
 const FInventoryRecord* FSimulationRegistry::ResolveInventory(FInventoryId InventoryId) const
@@ -1540,4 +1739,9 @@ void FSimulationRegistry::SetInventoryLocation(
 			NewSite->Inventories.Add(InventoryRecord.Id);
 		}
 	}
+}
+
+void FSimulationRegistry::SetPersonWork(FPersonRecord& PersonRecord, const FCurrentWork& NewWork)
+{
+	PersonRecord.CurrentWork = NewWork;
 }
