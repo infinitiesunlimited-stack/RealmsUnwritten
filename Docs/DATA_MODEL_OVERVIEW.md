@@ -77,6 +77,10 @@ Important rules:
 - Current animation, visible destination marker, and UI selection are not person state.
 - A person may be dormant or coarsely scheduled off-screen without losing identity.
 
+Prototype 0.1F establishes authored identity for kinds of skills (`SKILLS_KNOWLEDGE.md`),
+but it does not add any skill field, value, proficiency, experience, or progression to a
+person. The person-facing items above remain future data-model requirements.
+
 ### Household
 
 A `Household` is a persistent domestic and economic unit composed of real people.

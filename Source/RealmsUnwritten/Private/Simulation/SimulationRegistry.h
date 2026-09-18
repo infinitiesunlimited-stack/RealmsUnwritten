@@ -13,6 +13,7 @@
 #include "Simulation/PropertyRecord.h"
 #include "Simulation/SettlementRecord.h"
 #include "Simulation/SimulationIds.h"
+#include "Simulation/SkillTypeRecord.h"
 #include "Simulation/WorkTypeRecord.h"
 
 /**
@@ -265,7 +266,7 @@ enum class EPersonWorkResult : uint8
 
 /**
  * Authoritative owner of person, household, settlement, property, good type, inventory,
- * physical site, and work type records.
+ * physical site, work type, and skill type records.
  *
  * The registry is plain C++: no UObject, no Actor, no tick, no loaded map, and no
  * Blueprint exposure. Anything that needs a record resolves it by stable identifier
@@ -367,6 +368,15 @@ public:
 	 */
 	FWorkTypeId CreateWorkType(FName AuthoredKey, const FString& DisplayName);
 
+	/**
+	 * Creates a skill type under a durable authored key and returns its runtime handle.
+	 *
+	 * The authored key is the skill type's definition identity. None and duplicate skill-type
+	 * keys are rejected before allocation. Good-type and work-type keys are independent
+	 * namespaces. The display name is display data only and need not be unique.
+	 */
+	FSkillTypeId CreateSkillType(FName AuthoredKey, const FString& DisplayName);
+
 	/** Creates an empty inventory, holding no goods and located nowhere. */
 	FInventoryId CreateInventory();
 
@@ -390,6 +400,9 @@ public:
 
 	/** Whether the identifier resolves to a work type record. Safe for any identifier value. */
 	bool ContainsWorkType(FWorkTypeId WorkTypeId) const;
+
+	/** Whether the identifier resolves to a skill type record. Safe for any identifier value. */
+	bool ContainsSkillType(FSkillTypeId SkillTypeId) const;
 
 	/** Whether the identifier resolves to an inventory record. Safe for any identifier value. */
 	bool ContainsInventory(FInventoryId InventoryId) const;
@@ -463,6 +476,18 @@ public:
 	TOptional<FWorkTypeId> FindWorkTypeIdByKey(FName AuthoredKey) const;
 
 	/**
+	 * Reads a skill type record, or returns an unset optional when the identifier does not
+	 * resolve. The result is a detached copy and cannot mutate registry storage.
+	 */
+	TOptional<FSkillTypeRecord> FindSkillType(FSkillTypeId SkillTypeId) const;
+
+	/**
+	 * Resolves a durable authored key within the independent skill-type namespace.
+	 * Display names and keys registered by other definition families are not consulted.
+	 */
+	TOptional<FSkillTypeId> FindSkillTypeIdByKey(FName AuthoredKey) const;
+
+	/**
 	 * Reads an inventory record, or returns an unset optional for an identifier that does not
 	 * resolve. The result is a copy with the same contract as FindPerson, including a copy of
 	 * the entry list, and is intended for inspection and tests.
@@ -500,6 +525,9 @@ public:
 
 	/** Number of work type records held. Derived from storage. */
 	int32 GetWorkTypeCount() const { return WorkTypeRecords.Num(); }
+
+	/** Number of skill type records held. Derived from storage. */
+	int32 GetSkillTypeCount() const { return SkillTypeRecords.Num(); }
 
 	/** Number of inventory records held. Derived from storage. */
 	int32 GetInventoryCount() const { return InventoryRecords.Num(); }
@@ -679,6 +707,8 @@ private:
 
 	const FWorkTypeRecord* ResolveWorkType(FWorkTypeId WorkTypeId) const;
 
+	const FSkillTypeRecord* ResolveSkillType(FSkillTypeId SkillTypeId) const;
+
 	const FInventoryRecord* ResolveInventory(FInventoryId InventoryId) const;
 
 	FPersonRecord* ResolvePersonMutable(FPersonId PersonId);
@@ -760,6 +790,8 @@ private:
 
 	bool ValidateWorkTypeRecords(FString& OutFailureDescription) const;
 
+	bool ValidateSkillTypeRecords(FString& OutFailureDescription) const;
+
 	bool ValidateInventoryRecords(FString& OutFailureDescription) const;
 
 	TArray<FPersonRecord> PersonRecords;
@@ -775,6 +807,8 @@ private:
 	TArray<FGoodTypeRecord> GoodTypeRecords;
 
 	TArray<FWorkTypeRecord> WorkTypeRecords;
+
+	TArray<FSkillTypeRecord> SkillTypeRecords;
 
 	TArray<FInventoryRecord> InventoryRecords;
 

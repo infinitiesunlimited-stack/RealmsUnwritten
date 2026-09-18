@@ -252,6 +252,30 @@ FWorkTypeId FSimulationRegistry::CreateWorkType(FName AuthoredKey, const FString
 	return WorkTypeRecord.Id;
 }
 
+FSkillTypeId FSimulationRegistry::CreateSkillType(FName AuthoredKey, const FString& DisplayName)
+{
+	// Validation precedes storage so rejection consumes no runtime handle. Only the skill-type
+	// namespace participates in uniqueness; other authored definition families are independent.
+	if (AuthoredKey.IsNone())
+	{
+		return FSkillTypeId();
+	}
+
+	if (FindSkillTypeIdByKey(AuthoredKey).IsSet())
+	{
+		return FSkillTypeId();
+	}
+
+	const int32 RecordIndex = SkillTypeRecords.AddDefaulted();
+
+	FSkillTypeRecord& SkillTypeRecord = SkillTypeRecords[RecordIndex];
+	SkillTypeRecord.AuthoredKey = AuthoredKey;
+	SkillTypeRecord.Id = FromRecordIndex<FSkillTypeId>(RecordIndex);
+	SkillTypeRecord.Name = DisplayName;
+
+	return SkillTypeRecord.Id;
+}
+
 FInventoryId FSimulationRegistry::CreateInventory()
 {
 	const int32 RecordIndex = InventoryRecords.AddDefaulted();
@@ -296,6 +320,11 @@ bool FSimulationRegistry::ContainsGoodType(FGoodTypeId GoodTypeId) const
 bool FSimulationRegistry::ContainsWorkType(FWorkTypeId WorkTypeId) const
 {
 	return ResolveWorkType(WorkTypeId) != nullptr;
+}
+
+bool FSimulationRegistry::ContainsSkillType(FSkillTypeId SkillTypeId) const
+{
+	return ResolveSkillType(SkillTypeId) != nullptr;
 }
 
 bool FSimulationRegistry::ContainsInventory(FInventoryId InventoryId) const
@@ -410,6 +439,34 @@ TOptional<FWorkTypeId> FSimulationRegistry::FindWorkTypeIdByKey(FName AuthoredKe
 	}
 
 	return TOptional<FWorkTypeId>();
+}
+
+TOptional<FSkillTypeRecord> FSimulationRegistry::FindSkillType(FSkillTypeId SkillTypeId) const
+{
+	if (const FSkillTypeRecord* SkillTypeRecord = ResolveSkillType(SkillTypeId))
+	{
+		return TOptional<FSkillTypeRecord>(*SkillTypeRecord);
+	}
+
+	return TOptional<FSkillTypeRecord>();
+}
+
+TOptional<FSkillTypeId> FSimulationRegistry::FindSkillTypeIdByKey(FName AuthoredKey) const
+{
+	if (AuthoredKey.IsNone())
+	{
+		return TOptional<FSkillTypeId>();
+	}
+
+	for (const FSkillTypeRecord& SkillTypeRecord : SkillTypeRecords)
+	{
+		if (SkillTypeRecord.AuthoredKey == AuthoredKey)
+		{
+			return TOptional<FSkillTypeId>(SkillTypeRecord.Id);
+		}
+	}
+
+	return TOptional<FSkillTypeId>();
 }
 
 TOptional<FInventoryRecord> FSimulationRegistry::FindInventory(FInventoryId InventoryId) const
@@ -938,6 +995,7 @@ bool FSimulationRegistry::ValidateInvariants(FString& OutFailureDescription) con
 		&& ValidatePhysicalSiteRecords(OutFailureDescription)
 		&& ValidateGoodTypeRecords(OutFailureDescription)
 		&& ValidateWorkTypeRecords(OutFailureDescription)
+		&& ValidateSkillTypeRecords(OutFailureDescription)
 		&& ValidateInventoryRecords(OutFailureDescription);
 }
 
@@ -1449,6 +1507,41 @@ bool FSimulationRegistry::ValidateWorkTypeRecords(FString& OutFailureDescription
 	return true;
 }
 
+bool FSimulationRegistry::ValidateSkillTypeRecords(FString& OutFailureDescription) const
+{
+	for (int32 RecordIndex = 0; RecordIndex < SkillTypeRecords.Num(); ++RecordIndex)
+	{
+		const FSkillTypeRecord& SkillTypeRecord = SkillTypeRecords[RecordIndex];
+
+		if (ToRecordIndex(SkillTypeRecord.Id, SkillTypeRecords.Num()) != RecordIndex)
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Skill type slot %d holds identifier %s."), RecordIndex, *SkillTypeRecord.Id.ToString());
+			return false;
+		}
+
+		if (SkillTypeRecord.AuthoredKey.IsNone())
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Skill type slot %d has no authored key."), RecordIndex);
+			return false;
+		}
+
+		for (int32 EarlierIndex = 0; EarlierIndex < RecordIndex; ++EarlierIndex)
+		{
+			if (SkillTypeRecords[EarlierIndex].AuthoredKey == SkillTypeRecord.AuthoredKey)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("Skill type slots %d and %d share the authored key '%s'."),
+					EarlierIndex, RecordIndex, *SkillTypeRecord.AuthoredKey.ToString());
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 bool FSimulationRegistry::ValidateInventoryRecords(FString& OutFailureDescription) const
 {
 	for (int32 RecordIndex = 0; RecordIndex < InventoryRecords.Num(); ++RecordIndex)
@@ -1589,6 +1682,12 @@ const FWorkTypeRecord* FSimulationRegistry::ResolveWorkType(FWorkTypeId WorkType
 {
 	const int32 RecordIndex = ToRecordIndex(WorkTypeId, WorkTypeRecords.Num());
 	return RecordIndex == INDEX_NONE ? nullptr : &WorkTypeRecords[RecordIndex];
+}
+
+const FSkillTypeRecord* FSimulationRegistry::ResolveSkillType(FSkillTypeId SkillTypeId) const
+{
+	const int32 RecordIndex = ToRecordIndex(SkillTypeId, SkillTypeRecords.Num());
+	return RecordIndex == INDEX_NONE ? nullptr : &SkillTypeRecords[RecordIndex];
 }
 
 const FInventoryRecord* FSimulationRegistry::ResolveInventory(FInventoryId InventoryId) const

@@ -60,7 +60,7 @@ They inherit every property documented in 0.1A: phantom-typed, `explicit` raw-va
 
 ### Type-safety assertions
 
-0.1A asserted non-interchangeability with five pairwise `static_assert`s for two families. Four families would need twenty-four, so the assertions were replaced by one predicate applied to the whole set. Later slices extend it by adding names to the list, which is what the mechanism was built for. Prototype 0.1E currently covers eight families.
+0.1A asserted non-interchangeability with five pairwise `static_assert`s for two families. Four families would need twenty-four, so the assertions were replaced by one predicate applied to the whole set. Later slices extend it by adding names to the list, which is what the mechanism was built for. Prototype 0.1F currently covers nine families.
 
 ```cpp
 static_assert(
@@ -68,7 +68,7 @@ static_assert(
     "Simulation identifier families must never be interchangeable with one another.");
 ```
 
-That was the 0.1B list. `FGoodTypeId`, `FInventoryId`, `FPhysicalSiteId`, and `FWorkTypeId` were appended later; the predicate itself did not change.
+That was the 0.1B list. `FGoodTypeId`, `FInventoryId`, `FPhysicalSiteId`, `FWorkTypeId`, and `FSkillTypeId` were appended later; the predicate itself did not change.
 
 `TMutuallyDistinct` checks every unordered pair for sameness, convertibility in either direction, and constructibility in either direction. The assertion still lives next to the type aliases rather than in the tests, so it holds in every build. A future entity family is added by extending the list.
 

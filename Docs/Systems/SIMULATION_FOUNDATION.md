@@ -7,7 +7,7 @@
 - **Scope:** Persistent people and households only
 - **Describes:** Only what exists in the repository today
 - **Revision:** Updated after the independent Prototype 0.1A review; factual corrections applied where Prototype 0.1B extended this foundation
-- **Extended by:** `SETTLEMENT_PROPERTY_RESIDENCE.md` (Prototype 0.1B), which adds settlements, properties, and household residence; `GOODS_INVENTORY.md` (Prototype 0.1C), which adds good types and inventories; `PHYSICAL_SITE_INVENTORY_LOCATION.md` (Prototype 0.1D), which adds physical sites and inventory location; and `WORK_LABOR.md` (Prototype 0.1E), which adds work types and a person's exclusive current-work commitment. This document is still the record for people, households, and their membership relationship.
+- **Extended by:** `SETTLEMENT_PROPERTY_RESIDENCE.md` (Prototype 0.1B), which adds settlements, properties, and household residence; `GOODS_INVENTORY.md` (Prototype 0.1C), which adds good types and inventories; `PHYSICAL_SITE_INVENTORY_LOCATION.md` (Prototype 0.1D), which adds physical sites and inventory location; `WORK_LABOR.md` (Prototype 0.1E), which adds work types and a person's exclusive current-work commitment; and `SKILLS_KNOWLEDGE.md` (Prototype 0.1F), which adds Skill Type identity without person skill state. This document is still the record for people, households, and their membership relationship.
 
 ## Purpose
 
@@ -15,7 +15,7 @@ This is the first production slice of `PROTOTYPE_0_1_SCOPE.md` step 1–2 ("auth
 
 It answers one question: can people and households exist, be found, and be related to each other with no Actor, no map, no tick, and no visual representation?
 
-Nothing else was implemented by this slice. Settlements, properties, and household residence arrived in Prototype 0.1B (`SETTLEMENT_PROPERTY_RESIDENCE.md`), good types and inventories in Prototype 0.1C (`GOODS_INVENTORY.md`), physical sites with inventory location in Prototype 0.1D (`PHYSICAL_SITE_INVENTORY_LOCATION.md`), and work types with person current work in Prototype 0.1E (`WORK_LABOR.md`). There is still no calendar, occupation, production, commands, events, or save format.
+Nothing else was implemented by this slice. Settlements, properties, and household residence arrived in Prototype 0.1B (`SETTLEMENT_PROPERTY_RESIDENCE.md`), good types and inventories in Prototype 0.1C (`GOODS_INVENTORY.md`), physical sites with inventory location in Prototype 0.1D (`PHYSICAL_SITE_INVENTORY_LOCATION.md`), work types with person current work in Prototype 0.1E (`WORK_LABOR.md`), and Skill Type identity in Prototype 0.1F (`SKILLS_KNOWLEDGE.md`). There is still no person skill state, knowledge, calendar, occupation, production, commands, events, or save format.
 
 ## Authoritative simulation boundary
 
@@ -130,7 +130,7 @@ No maximum age rule was invented, `0` is accepted, and `ValidateInvariants` also
 - **Occupation** — still deferred. Occupation is a social-economic role and is not current work. Prototype 0.1E (`WORK_LABOR.md`) added an exclusive `CurrentWork` commitment on the person, targeted at a physical site; that is labor state, not a profession, and not physical presence. Adding a bare occupation string or enum now would still create an unowned field.
 - **Origin place, cultural background** — neither field exists on a person record. Settlements exist as of Prototype 0.1B, but nothing records where a person came from, and there is no culture system to reference.
 - **Residence** — a person record has no residence or settlement field, and gained none in 0.1B. Prototype 0.1B provides the property and residence foundation, but it is authoritative on the *household*: a household has an explicit settlement membership and an optional residential property, and a person's place is derived by reading their household's. See `SETTLEMENT_PROPERTY_RESIDENCE.md`.
-- **Inventory, possessions, skills, kin links, activity, location** — need knowledge, job, and spatial systems that do not exist. Prototype 0.1C added inventories and Prototype 0.1D locates them at physical sites, but a person record still holds no inventory reference: a person is not an inventory holder. Prototype 0.1E added current work as labor commitment, not as person location or presence. See `PHYSICAL_SITE_INVENTORY_LOCATION.md` and `WORK_LABOR.md`.
+- **Inventory, possessions, person skill state, kin links, activity, location** — need knowledge, job, and spatial systems that do not exist. Prototype 0.1C added inventories and Prototype 0.1D locates them at physical sites, but a person record still holds no inventory reference: a person is not an inventory holder. Prototype 0.1E added current work as labor commitment, not as person location or presence. Prototype 0.1F added Skill Type identity but no skill field to the person. See `PHYSICAL_SITE_INVENTORY_LOCATION.md`, `WORK_LABOR.md`, and `SKILLS_KNOWLEDGE.md`.
 - **Death date and cause, genetics, disease, personality, religion, ideology, knowledge, marriage, reproduction, inheritance, needs, individual AI, appearance** — out of scope by the assignment and by `PROTOTYPE_0_1_SCOPE.md`.
 
 ## Household representation
@@ -301,9 +301,9 @@ Nothing outside people, households, and their membership relationship was implem
 - Fields, crops, agriculture, farming, and forestry
 - Resources, lots, inventories, custody, reservations, logistics, and transport — good types, inventories, and conserved transfer landed in 0.1C; physical sites and inventory location landed in 0.1D; lots, reservations, capacity, logistics, and transport remain deferred
 - Production, milling, baking, market exchange, prices, wealth, and consumption
-- Jobs, occupations, labor assignment, and needs — exclusive current-work commitment landed in 0.1E; occupation, job markets, schedules, wages, skills, and needs remain deferred
+- Jobs, occupations, labor assignment, and needs — exclusive current-work commitment landed in 0.1E; occupation, job markets, schedules, wages, person skill state, and needs remain deferred
 - Birth, death, aging, marriage, reproduction, inheritance, household formation and dissolution, migration, and immigration
-- Knowledge, skills, teaching, and technology
+- Knowledge, person skill state, teaching, and technology — Skill Type identity landed in 0.1F; all person capability state and behavior remain deferred
 - Institutions, government, politics, law, taxation, diplomacy, combat, and military
 - AI planners, policies, and behaviour of any scope
 - Save/load, serialization, and schema migration
@@ -334,4 +334,4 @@ Raised for review, not decided here:
 
 1. **Who owns the registry?** Selecting the simulation host and its lifetime touches the command boundary, the clock, and eventually save/load. It is an architectural review trigger and should be decided with the calendar slice rather than implied by this one.
 2. **Module split.** `AI_DEVELOPMENT_RULES.md` sketches a target layout with separate `SimulationCore` / `SimulationSystems` / `Application` modules, and marks it as a target rather than a scaffolding request. This slice stays inside the single existing `RealmsUnwritten` module, using the standard `Private/` layout. The split into real modules remains an open decision; the code depends on nothing beyond `Core`, so it can move when that decision is made.
-3. **Definition identifiers.** Answered for good types by the Prototype 0.1C architectural review: a durable `FName` authored key is the definition identity, and the dense `FGoodTypeId` is only a runtime handle. Whether that same split serves every later definition family, and whether authored keys need namespacing or versioning rules, remains open and is restated in `GOODS_INVENTORY.md`.
+3. **Definition identifiers.** Answered for good types by the Prototype 0.1C architectural review: a durable `FName` authored key is the definition identity, and the dense typed ID is only a runtime handle. Work Types reused the split in 0.1E and Skill Types reused it in 0.1F. Whether authored keys eventually need versioning rules remains open.

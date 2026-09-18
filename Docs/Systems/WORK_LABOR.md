@@ -142,7 +142,7 @@ Not implemented, and not scaffolded:
 
 - Production, harvest execution, recipes, construction
 - Movement, pathfinding, presence, travel, arrival, distance
-- Occupation, profession, skills, wages, contracts, job requests, job board
+- Occupation, profession, person skill state, skill values, wages, contracts, job requests, job board
 - `FWorkAssignmentId` or assignment-record arrays
 - Schedules, hours, fatigue, eligibility
 - Household labor AI, work priorities, seasonal labor
