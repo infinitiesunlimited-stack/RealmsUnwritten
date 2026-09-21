@@ -63,6 +63,8 @@ Skill Types are intentionally broad transferable capabilities. Tasks, products, 
 
 Keep kinds such as Carpentry, Farming, Masonry, and Smithing. Do not split those into RoofCarpentry, WheatFarming, PlowingSkill, or similar task-level or product-level micro-skills. A new Skill Type should represent a genuinely distinct broad transferable human capability.
 
+Narrow objectives belong to Task Types instead (`TASKS.md`). Shape Beam is a Task Type; the capability it draws on stays the broad Skill Type Carpentry. A Task Type never implies a matching Skill Type.
+
 ## Module layout
 
 ```text
@@ -197,6 +199,7 @@ These checks are part of `ValidateInvariants` and do not weaken earlier simulati
 - **Person Capability:** the recorded relationship that a particular person possesses that Skill Type.
 - **Accumulated Practice:** persistent developmental history associated with that acquired capability.
 - **General Capability:** derived broad learned ability interpreted from AccumulatedPractice. Not stored.
+- **Task Type:** what specific kind of objective exists (`TASKS.md`). Far narrower than a Skill Type, and defining one grants no capability and generates no practice.
 - **Task Performance:** future contextual effectiveness. Not implemented.
 - **Knowledge:** what a person understands. Not implemented.
 - **Occupation:** how a person is economically or socially identified. Not implemented.

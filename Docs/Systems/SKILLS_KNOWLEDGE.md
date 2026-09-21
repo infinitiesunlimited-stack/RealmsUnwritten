@@ -5,7 +5,7 @@
 - **Role:** Implementation record for Prototype 0.1F
 - **Authority:** Subordinate to `DESIGN_CONSTITUTION.md`, `HIGH_LEVEL_ARCHITECTURE.md`, `DATA_MODEL_OVERVIEW.md`, and `PROTOTYPE_0_1_SCOPE.md`
 - **Extends:** The authored-definition identity pattern established by Good Type and Work Type
-- **Extended by:** `PERSON_CAPABILITY.md` (Prototype 0.1G–0.1I), which records which people possess which Skill Types, stores accumulated practice for those relationships, and derives a read-only general capability from that practice without adding skill fields to `FPersonRecord`; Activity Type identity is a later independent definition family (`PERSON_ACTIVITY.md`)
+- **Extended by:** `PERSON_CAPABILITY.md` (Prototype 0.1G–0.1I), which records which people possess which Skill Types, stores accumulated practice for those relationships, and derives a read-only general capability from that practice without adding skill fields to `FPersonRecord`; Activity Type identity is a later independent definition family (`PERSON_ACTIVITY.md`), as is Task Type identity (`TASKS.md`)
 - **Scope:** Skill Type identity only
 - **Describes:** Only what exists in the repository today
 
@@ -46,8 +46,8 @@ the other simulation identifiers. It is not interchangeable with `FGoodTypeId`,
 `FWorkTypeId`, or any other identifier family.
 
 Skill Type authored keys occupy their own registry namespace. The exact key `Wheat` may
-simultaneously identify a Good Type, Work Type, Skill Type, and Activity Type; each family
-resolves only its own record.
+simultaneously identify a Good Type, Work Type, Skill Type, Activity Type, and Task Type;
+each family resolves only its own record.
 
 ## Registry authority
 
@@ -95,8 +95,10 @@ Skill Types do not require Work Types, and Work Types do not require Skill Types
 Type has no production effect and does not imply knowledge, occupation, work assignment,
 presence, or activity.
 
-Prototype 0.1J later added Activity Type identity as a fourth authored-definition family.
-0.1F itself did not add it.
+Prototype 0.1J later added Activity Type identity as a fourth authored-definition family, and
+Prototype 0.1K added Task Type identity as a fifth (`TASKS.md`). 0.1F itself added neither.
+A Task Type may be far narrower than a Skill Type: Shape Beam is a task, Carpentry is the
+skill. Narrow tasks must not be mirrored as narrow Skill Types.
 
 ## Explicitly not implemented
 

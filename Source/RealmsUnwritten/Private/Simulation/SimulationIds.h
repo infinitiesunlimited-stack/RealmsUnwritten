@@ -98,6 +98,11 @@ struct FActivityTypeIdTag
 	static constexpr const TCHAR* DebugName = TEXT("ActivityType");
 };
 
+struct FTaskTypeIdTag
+{
+	static constexpr const TCHAR* DebugName = TEXT("TaskType");
+};
+
 using FPersonId = TSimulationId<FPersonIdTag>;
 using FHouseholdId = TSimulationId<FHouseholdIdTag>;
 using FSettlementId = TSimulationId<FSettlementIdTag>;
@@ -108,6 +113,7 @@ using FPhysicalSiteId = TSimulationId<FPhysicalSiteIdTag>;
 using FWorkTypeId = TSimulationId<FWorkTypeIdTag>;
 using FSkillTypeId = TSimulationId<FSkillTypeIdTag>;
 using FActivityTypeId = TSimulationId<FActivityTypeIdTag>;
+using FTaskTypeId = TSimulationId<FTaskTypeIdTag>;
 
 namespace SimulationIdContract
 {
@@ -139,5 +145,5 @@ namespace SimulationIdContract
 static_assert(
 	SimulationIdContract::TMutuallyDistinct<
 		FPersonId, FHouseholdId, FSettlementId, FPropertyId, FGoodTypeId, FInventoryId, FPhysicalSiteId,
-		FWorkTypeId, FSkillTypeId, FActivityTypeId>::value,
+		FWorkTypeId, FSkillTypeId, FActivityTypeId, FTaskTypeId>::value,
 	"Simulation identifier families must never be interchangeable with one another.");

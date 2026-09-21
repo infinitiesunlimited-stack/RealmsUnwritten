@@ -10,7 +10,7 @@ The central rule is that authoritative records outlive and remain independent fr
 
 The model distinguishes:
 
-- **Definitions:** Authored types such as `Wheat`, `Bread`, `WheatCrop`, `MillingProcess`, or `BakeryBuilding`. Definitions have stable definition IDs and versioned content.
+- **Definitions:** Authored types such as `Wheat`, `Bread`, `WheatCrop`, `MillingProcess`, `BakeryBuilding`, or `ShapeBeam`. Definitions have stable definition IDs and versioned content.
 - **Entities:** Persistent world identities such as a person, household, property, building, field, settlement, or identifiable goods lot.
 - **Assignments and processes:** Time-bounded relationships such as a job commitment, tenancy, crop cycle, reservation, transfer, or production batch.
 - **Derived projections:** Rebuildable totals and UI summaries such as settlement population, available wheat, or employed adults.
@@ -84,8 +84,9 @@ relationships (`PERSON_CAPABILITY.md`). Prototype 0.1H stores `uint32` accumulat
 on that relationship. Prototype 0.1I derives a read-only general capability integer from
 that practice without storing it on the person or the relationship. Prototype 0.1J records
 authored Activity Type identity and one optional `CurrentActivity` on the person
-(`PERSON_ACTIVITY.md`) without generating practice or implying a capability. The remaining
-person-facing items above remain future data-model requirements.
+(`PERSON_ACTIVITY.md`) without generating practice or implying a capability. Prototype 0.1K
+adds authored Task Type identity only (`TASKS.md`), with no task instance and no person
+link. The remaining person-facing items above remain future data-model requirements.
 
 ### Household
 
@@ -158,7 +159,9 @@ A `Job` represents work needed or a durable workplace/role, depending on subtype
 
 Prototype 0.1E implements only the exclusive person-side commitment: `Person.CurrentWork` names a work type and a stationary physical site. That is a labeled simplification of the assignment/commitment role, not a job request, not occupation, and not physical presence. See `WORK_LABOR.md`.
 
-Prototype 0.1J stores one optional `Person.CurrentActivity` naming an authored Activity Type. That is broad current behavior, not the long-term job Activity listed below, not a task, and not CurrentWork. CurrentWork does not automatically produce Working, and Working does not require CurrentWork. See `PERSON_ACTIVITY.md`.
+Prototype 0.1J stores one optional `Person.CurrentActivity` naming an authored Activity Type. That is broad current behavior, not a task, and not CurrentWork. CurrentWork does not automatically produce Working, and Working does not require CurrentWork. See `PERSON_ACTIVITY.md`.
+
+Prototype 0.1K adds authored Task Type identity: what specific reusable kind of objective exists, such as Shape Beam or Harvest Wheat. It adds no task instance and no link between a task and a person. See `TASKS.md`.
 
 Recommended conceptual split:
 
@@ -166,8 +169,10 @@ Recommended conceptual split:
 - **Work Request / Job:** Work to perform, issuer, site, time window, priority, requirements, expected effort, and compensation policy if applicable.
 - **Job Assignment / Commitment:** Link between a person and accepted work, including status and scheduled interval.
 - **Current Activity:** Broad recorded behavior such as Working, Sleeping, or Traveling (`PERSON_ACTIVITY.md`).
-- **Task:** A later specific objective or action, such as shaping a roof beam. Not implemented.
-- **Job Activity (long-term):** The currently executing portion of an assignment, such as travel, pickup, milling, or delivery. Not collapsed into Current Activity.
+- **Task Type:** An authored reusable kind of specific objective, such as Shape Beam (`TASKS.md`).
+- **Task Instance:** One actual occurrence of that objective, such as shaping roof beam #482. Not implemented; a task instance must be able to exist before any person accepts it.
+
+Specific objectives belong to the Task concept. Work that executes as steps — travel, pickup, milling, delivery — is described as Task Instances, not as a separate generic objective hierarchy parallel to Task. Domain records such as production batches, transfer orders, construction state, and crop cycles still exist where they own real domain rules, but they are not generic objective hierarchies. See `TASKS.md`.
 
 Core authoritative job data:
 

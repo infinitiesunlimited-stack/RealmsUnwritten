@@ -16,6 +16,7 @@
 #include "Simulation/SettlementRecord.h"
 #include "Simulation/SimulationIds.h"
 #include "Simulation/SkillTypeRecord.h"
+#include "Simulation/TaskTypeRecord.h"
 #include "Simulation/WorkTypeRecord.h"
 
 /**
@@ -335,7 +336,8 @@ enum class EPersonActivityResult : uint8
 
 /**
  * Authoritative owner of person, household, settlement, property, good type, inventory,
- * physical site, work type, skill type, activity type, and person-capability relationship records.
+ * physical site, work type, skill type, activity type, task type, and person-capability
+ * relationship records.
  *
  * The registry is plain C++: no UObject, no Actor, no tick, no loaded map, and no
  * Blueprint exposure. Anything that needs a record resolves it by stable identifier
@@ -462,6 +464,19 @@ public:
 	 */
 	FActivityTypeId CreateActivityType(FName AuthoredKey, const FString& DisplayName);
 
+	/**
+	 * Creates a task type under a durable authored key and returns its runtime handle.
+	 *
+	 * The authored key is the task type's definition identity. None and duplicate task-type
+	 * keys are rejected before allocation. Good-type, work-type, skill-type, and
+	 * activity-type keys are independent namespaces. The display name is display data only
+	 * and need not be unique.
+	 *
+	 * This registers what kind of objective exists. It creates no attempt at one, names no
+	 * person, place, or target, and changes no other record.
+	 */
+	FTaskTypeId CreateTaskType(FName AuthoredKey, const FString& DisplayName);
+
 	/** Creates an empty inventory, holding no goods and located nowhere. */
 	FInventoryId CreateInventory();
 
@@ -491,6 +506,9 @@ public:
 
 	/** Whether the identifier resolves to an activity type record. Safe for any identifier value. */
 	bool ContainsActivityType(FActivityTypeId ActivityTypeId) const;
+
+	/** Whether the identifier resolves to a task type record. Safe for any identifier value. */
+	bool ContainsTaskType(FTaskTypeId TaskTypeId) const;
 
 	/** Whether the identifier resolves to an inventory record. Safe for any identifier value. */
 	bool ContainsInventory(FInventoryId InventoryId) const;
@@ -588,6 +606,18 @@ public:
 	TOptional<FActivityTypeId> FindActivityTypeIdByKey(FName AuthoredKey) const;
 
 	/**
+	 * Reads a task type record, or returns an unset optional when the identifier does not
+	 * resolve. The result is a detached copy and cannot mutate registry storage.
+	 */
+	TOptional<FTaskTypeRecord> FindTaskType(FTaskTypeId TaskTypeId) const;
+
+	/**
+	 * Resolves a durable authored key within the independent task-type namespace.
+	 * Display names and keys registered by other definition families are not consulted.
+	 */
+	TOptional<FTaskTypeId> FindTaskTypeIdByKey(FName AuthoredKey) const;
+
+	/**
 	 * Reads an inventory record, or returns an unset optional for an identifier that does not
 	 * resolve. The result is a copy with the same contract as FindPerson, including a copy of
 	 * the entry list, and is intended for inspection and tests.
@@ -631,6 +661,9 @@ public:
 
 	/** Number of activity type records held. Derived from storage. */
 	int32 GetActivityTypeCount() const { return ActivityTypeRecords.Num(); }
+
+	/** Number of task type records held. Derived from storage. */
+	int32 GetTaskTypeCount() const { return TaskTypeRecords.Num(); }
 
 	/** Number of recorded person-capability relationships. Derived from sparse storage. */
 	int32 GetPersonCapabilityCount() const { return PersonCapabilityRecords.Num(); }
@@ -891,6 +924,8 @@ private:
 
 	const FActivityTypeRecord* ResolveActivityType(FActivityTypeId ActivityTypeId) const;
 
+	const FTaskTypeRecord* ResolveTaskType(FTaskTypeId TaskTypeId) const;
+
 	const FInventoryRecord* ResolveInventory(FInventoryId InventoryId) const;
 
 	FPersonRecord* ResolvePersonMutable(FPersonId PersonId);
@@ -982,6 +1017,8 @@ private:
 
 	bool ValidateActivityTypeRecords(FString& OutFailureDescription) const;
 
+	bool ValidateTaskTypeRecords(FString& OutFailureDescription) const;
+
 	bool ValidatePersonCapabilityRecords(FString& OutFailureDescription) const;
 
 	bool ValidateInventoryRecords(FString& OutFailureDescription) const;
@@ -1003,6 +1040,8 @@ private:
 	TArray<FSkillTypeRecord> SkillTypeRecords;
 
 	TArray<FActivityTypeRecord> ActivityTypeRecords;
+
+	TArray<FTaskTypeRecord> TaskTypeRecords;
 
 	TArray<FPersonCapabilityRecord> PersonCapabilityRecords;
 

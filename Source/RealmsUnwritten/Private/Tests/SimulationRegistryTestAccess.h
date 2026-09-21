@@ -37,6 +37,11 @@ struct FSimulationRegistryTestAccess
 		return Registry.ActivityTypeRecords;
 	}
 
+	static TArray<FTaskTypeRecord>& TaskTypeRecords(FSimulationRegistry& Registry)
+	{
+		return Registry.TaskTypeRecords;
+	}
+
 	static TArray<FPersonCapabilityRecord>& PersonCapabilityRecords(FSimulationRegistry& Registry)
 	{
 		return Registry.PersonCapabilityRecords;

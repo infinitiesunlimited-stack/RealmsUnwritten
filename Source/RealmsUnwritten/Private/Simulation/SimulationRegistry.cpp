@@ -382,6 +382,31 @@ FActivityTypeId FSimulationRegistry::CreateActivityType(FName AuthoredKey, const
 	return ActivityTypeRecord.Id;
 }
 
+FTaskTypeId FSimulationRegistry::CreateTaskType(FName AuthoredKey, const FString& DisplayName)
+{
+	// Validation precedes storage so rejection consumes no runtime handle. Only the
+	// task-type namespace participates in uniqueness; other authored definition families
+	// are independent.
+	if (AuthoredKey.IsNone())
+	{
+		return FTaskTypeId();
+	}
+
+	if (FindTaskTypeIdByKey(AuthoredKey).IsSet())
+	{
+		return FTaskTypeId();
+	}
+
+	const int32 RecordIndex = TaskTypeRecords.AddDefaulted();
+
+	FTaskTypeRecord& TaskTypeRecord = TaskTypeRecords[RecordIndex];
+	TaskTypeRecord.AuthoredKey = AuthoredKey;
+	TaskTypeRecord.Id = FromRecordIndex<FTaskTypeId>(RecordIndex);
+	TaskTypeRecord.Name = DisplayName;
+
+	return TaskTypeRecord.Id;
+}
+
 FInventoryId FSimulationRegistry::CreateInventory()
 {
 	const int32 RecordIndex = InventoryRecords.AddDefaulted();
@@ -436,6 +461,11 @@ bool FSimulationRegistry::ContainsSkillType(FSkillTypeId SkillTypeId) const
 bool FSimulationRegistry::ContainsActivityType(FActivityTypeId ActivityTypeId) const
 {
 	return ResolveActivityType(ActivityTypeId) != nullptr;
+}
+
+bool FSimulationRegistry::ContainsTaskType(FTaskTypeId TaskTypeId) const
+{
+	return ResolveTaskType(TaskTypeId) != nullptr;
 }
 
 bool FSimulationRegistry::ContainsInventory(FInventoryId InventoryId) const
@@ -606,6 +636,34 @@ TOptional<FActivityTypeId> FSimulationRegistry::FindActivityTypeIdByKey(FName Au
 	}
 
 	return TOptional<FActivityTypeId>();
+}
+
+TOptional<FTaskTypeRecord> FSimulationRegistry::FindTaskType(FTaskTypeId TaskTypeId) const
+{
+	if (const FTaskTypeRecord* TaskTypeRecord = ResolveTaskType(TaskTypeId))
+	{
+		return TOptional<FTaskTypeRecord>(*TaskTypeRecord);
+	}
+
+	return TOptional<FTaskTypeRecord>();
+}
+
+TOptional<FTaskTypeId> FSimulationRegistry::FindTaskTypeIdByKey(FName AuthoredKey) const
+{
+	if (AuthoredKey.IsNone())
+	{
+		return TOptional<FTaskTypeId>();
+	}
+
+	for (const FTaskTypeRecord& TaskTypeRecord : TaskTypeRecords)
+	{
+		if (TaskTypeRecord.AuthoredKey == AuthoredKey)
+		{
+			return TOptional<FTaskTypeId>(TaskTypeRecord.Id);
+		}
+	}
+
+	return TOptional<FTaskTypeId>();
 }
 
 TOptional<FInventoryRecord> FSimulationRegistry::FindInventory(FInventoryId InventoryId) const
@@ -1268,6 +1326,7 @@ bool FSimulationRegistry::ValidateInvariants(FString& OutFailureDescription) con
 		&& ValidateWorkTypeRecords(OutFailureDescription)
 		&& ValidateSkillTypeRecords(OutFailureDescription)
 		&& ValidateActivityTypeRecords(OutFailureDescription)
+		&& ValidateTaskTypeRecords(OutFailureDescription)
 		&& ValidatePersonCapabilityRecords(OutFailureDescription)
 		&& ValidateInventoryRecords(OutFailureDescription);
 }
@@ -1880,6 +1939,42 @@ bool FSimulationRegistry::ValidateActivityTypeRecords(FString& OutFailureDescrip
 	return true;
 }
 
+bool FSimulationRegistry::ValidateTaskTypeRecords(FString& OutFailureDescription) const
+{
+	for (int32 RecordIndex = 0; RecordIndex < TaskTypeRecords.Num(); ++RecordIndex)
+	{
+		const FTaskTypeRecord& TaskTypeRecord = TaskTypeRecords[RecordIndex];
+
+		if (ToRecordIndex(TaskTypeRecord.Id, TaskTypeRecords.Num()) != RecordIndex)
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Task type slot %d holds identifier %s."),
+				RecordIndex, *TaskTypeRecord.Id.ToString());
+			return false;
+		}
+
+		if (TaskTypeRecord.AuthoredKey.IsNone())
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Task type slot %d has no authored key."), RecordIndex);
+			return false;
+		}
+
+		for (int32 EarlierIndex = 0; EarlierIndex < RecordIndex; ++EarlierIndex)
+		{
+			if (TaskTypeRecords[EarlierIndex].AuthoredKey == TaskTypeRecord.AuthoredKey)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("Task type slots %d and %d share the authored key '%s'."),
+					EarlierIndex, RecordIndex, *TaskTypeRecord.AuthoredKey.ToString());
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 bool FSimulationRegistry::ValidatePersonCapabilityRecords(FString& OutFailureDescription) const
 {
 	for (int32 RecordIndex = 0; RecordIndex < PersonCapabilityRecords.Num(); ++RecordIndex)
@@ -2074,6 +2169,12 @@ const FActivityTypeRecord* FSimulationRegistry::ResolveActivityType(FActivityTyp
 {
 	const int32 RecordIndex = ToRecordIndex(ActivityTypeId, ActivityTypeRecords.Num());
 	return RecordIndex == INDEX_NONE ? nullptr : &ActivityTypeRecords[RecordIndex];
+}
+
+const FTaskTypeRecord* FSimulationRegistry::ResolveTaskType(FTaskTypeId TaskTypeId) const
+{
+	const int32 RecordIndex = ToRecordIndex(TaskTypeId, TaskTypeRecords.Num());
+	return RecordIndex == INDEX_NONE ? nullptr : &TaskTypeRecords[RecordIndex];
 }
 
 const FInventoryRecord* FSimulationRegistry::ResolveInventory(FInventoryId InventoryId) const
