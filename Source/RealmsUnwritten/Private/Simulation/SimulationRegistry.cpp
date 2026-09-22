@@ -407,6 +407,25 @@ FTaskTypeId FSimulationRegistry::CreateTaskType(FName AuthoredKey, const FString
 	return TaskTypeRecord.Id;
 }
 
+FTaskId FSimulationRegistry::CreateTask(FTaskTypeId TaskTypeId)
+{
+	// Validated before storage is touched, so a task can never name a task type that does
+	// not exist, and a rejected creation consumes no identifier. Occurrences of the same
+	// task type are not deduplicated: each one is a separate objective.
+	if (!ContainsTaskType(TaskTypeId))
+	{
+		return FTaskId();
+	}
+
+	const int32 RecordIndex = TaskRecords.AddDefaulted();
+
+	FTaskRecord& TaskRecord = TaskRecords[RecordIndex];
+	TaskRecord.Id = FromRecordIndex<FTaskId>(RecordIndex);
+	TaskRecord.TaskTypeId = TaskTypeId;
+
+	return TaskRecord.Id;
+}
+
 FInventoryId FSimulationRegistry::CreateInventory()
 {
 	const int32 RecordIndex = InventoryRecords.AddDefaulted();
@@ -466,6 +485,11 @@ bool FSimulationRegistry::ContainsActivityType(FActivityTypeId ActivityTypeId) c
 bool FSimulationRegistry::ContainsTaskType(FTaskTypeId TaskTypeId) const
 {
 	return ResolveTaskType(TaskTypeId) != nullptr;
+}
+
+bool FSimulationRegistry::ContainsTask(FTaskId TaskId) const
+{
+	return ResolveTask(TaskId) != nullptr;
 }
 
 bool FSimulationRegistry::ContainsInventory(FInventoryId InventoryId) const
@@ -664,6 +688,16 @@ TOptional<FTaskTypeId> FSimulationRegistry::FindTaskTypeIdByKey(FName AuthoredKe
 	}
 
 	return TOptional<FTaskTypeId>();
+}
+
+TOptional<FTaskRecord> FSimulationRegistry::FindTask(FTaskId TaskId) const
+{
+	if (const FTaskRecord* TaskRecord = ResolveTask(TaskId))
+	{
+		return TOptional<FTaskRecord>(*TaskRecord);
+	}
+
+	return TOptional<FTaskRecord>();
 }
 
 TOptional<FInventoryRecord> FSimulationRegistry::FindInventory(FInventoryId InventoryId) const
@@ -1327,6 +1361,7 @@ bool FSimulationRegistry::ValidateInvariants(FString& OutFailureDescription) con
 		&& ValidateSkillTypeRecords(OutFailureDescription)
 		&& ValidateActivityTypeRecords(OutFailureDescription)
 		&& ValidateTaskTypeRecords(OutFailureDescription)
+		&& ValidateTaskRecords(OutFailureDescription)
 		&& ValidatePersonCapabilityRecords(OutFailureDescription)
 		&& ValidateInventoryRecords(OutFailureDescription);
 }
@@ -1975,6 +2010,33 @@ bool FSimulationRegistry::ValidateTaskTypeRecords(FString& OutFailureDescription
 	return true;
 }
 
+bool FSimulationRegistry::ValidateTaskRecords(FString& OutFailureDescription) const
+{
+	// Task types are deliberately not checked for uniqueness here: many occurrences of one
+	// objective are normal, and two tasks of the same type are two separate tasks.
+	for (int32 RecordIndex = 0; RecordIndex < TaskRecords.Num(); ++RecordIndex)
+	{
+		const FTaskRecord& TaskRecord = TaskRecords[RecordIndex];
+
+		if (ToRecordIndex(TaskRecord.Id, TaskRecords.Num()) != RecordIndex)
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Task slot %d holds identifier %s."), RecordIndex, *TaskRecord.Id.ToString());
+			return false;
+		}
+
+		if (!ContainsTaskType(TaskRecord.TaskTypeId))
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Task slot %d names unresolvable task type %s."),
+				RecordIndex, *TaskRecord.TaskTypeId.ToString());
+			return false;
+		}
+	}
+
+	return true;
+}
+
 bool FSimulationRegistry::ValidatePersonCapabilityRecords(FString& OutFailureDescription) const
 {
 	for (int32 RecordIndex = 0; RecordIndex < PersonCapabilityRecords.Num(); ++RecordIndex)
@@ -2175,6 +2237,12 @@ const FTaskTypeRecord* FSimulationRegistry::ResolveTaskType(FTaskTypeId TaskType
 {
 	const int32 RecordIndex = ToRecordIndex(TaskTypeId, TaskTypeRecords.Num());
 	return RecordIndex == INDEX_NONE ? nullptr : &TaskTypeRecords[RecordIndex];
+}
+
+const FTaskRecord* FSimulationRegistry::ResolveTask(FTaskId TaskId) const
+{
+	const int32 RecordIndex = ToRecordIndex(TaskId, TaskRecords.Num());
+	return RecordIndex == INDEX_NONE ? nullptr : &TaskRecords[RecordIndex];
 }
 
 const FInventoryRecord* FSimulationRegistry::ResolveInventory(FInventoryId InventoryId) const

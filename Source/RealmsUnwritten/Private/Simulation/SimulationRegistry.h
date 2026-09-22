@@ -16,6 +16,7 @@
 #include "Simulation/SettlementRecord.h"
 #include "Simulation/SimulationIds.h"
 #include "Simulation/SkillTypeRecord.h"
+#include "Simulation/TaskRecord.h"
 #include "Simulation/TaskTypeRecord.h"
 #include "Simulation/WorkTypeRecord.h"
 
@@ -336,8 +337,8 @@ enum class EPersonActivityResult : uint8
 
 /**
  * Authoritative owner of person, household, settlement, property, good type, inventory,
- * physical site, work type, skill type, activity type, task type, and person-capability
- * relationship records.
+ * physical site, work type, skill type, activity type, task type, task, and
+ * person-capability relationship records.
  *
  * The registry is plain C++: no UObject, no Actor, no tick, no loaded map, and no
  * Blueprint exposure. Anything that needs a record resolves it by stable identifier
@@ -477,6 +478,20 @@ public:
 	 */
 	FTaskTypeId CreateTaskType(FName AuthoredKey, const FString& DisplayName);
 
+	/**
+	 * Creates one occurrence of a task type and returns its runtime handle.
+	 *
+	 * The task type is resolved before allocation, so an unresolvable type returns an
+	 * invalid identifier, stores nothing, and consumes no handle. Occurrences are not
+	 * deduplicated: several tasks may name the same task type, because each is a separate
+	 * objective occurrence.
+	 *
+	 * A task requires no person and names none. Creating one records only that this
+	 * objective exists; it does not make it available, assigned, current, located, or
+	 * started, and it changes no person, work, activity, capability, goods, or site state.
+	 */
+	FTaskId CreateTask(FTaskTypeId TaskTypeId);
+
 	/** Creates an empty inventory, holding no goods and located nowhere. */
 	FInventoryId CreateInventory();
 
@@ -509,6 +524,9 @@ public:
 
 	/** Whether the identifier resolves to a task type record. Safe for any identifier value. */
 	bool ContainsTaskType(FTaskTypeId TaskTypeId) const;
+
+	/** Whether the identifier resolves to a task record. Safe for any identifier value. */
+	bool ContainsTask(FTaskId TaskId) const;
 
 	/** Whether the identifier resolves to an inventory record. Safe for any identifier value. */
 	bool ContainsInventory(FInventoryId InventoryId) const;
@@ -618,6 +636,12 @@ public:
 	TOptional<FTaskTypeId> FindTaskTypeIdByKey(FName AuthoredKey) const;
 
 	/**
+	 * Reads a task record, or returns an unset optional when the identifier does not
+	 * resolve. The result is a detached copy and cannot mutate registry storage.
+	 */
+	TOptional<FTaskRecord> FindTask(FTaskId TaskId) const;
+
+	/**
 	 * Reads an inventory record, or returns an unset optional for an identifier that does not
 	 * resolve. The result is a copy with the same contract as FindPerson, including a copy of
 	 * the entry list, and is intended for inspection and tests.
@@ -664,6 +688,9 @@ public:
 
 	/** Number of task type records held. Derived from storage. */
 	int32 GetTaskTypeCount() const { return TaskTypeRecords.Num(); }
+
+	/** Number of task records held. Derived from storage; not a count of outstanding work. */
+	int32 GetTaskCount() const { return TaskRecords.Num(); }
 
 	/** Number of recorded person-capability relationships. Derived from sparse storage. */
 	int32 GetPersonCapabilityCount() const { return PersonCapabilityRecords.Num(); }
@@ -926,6 +953,8 @@ private:
 
 	const FTaskTypeRecord* ResolveTaskType(FTaskTypeId TaskTypeId) const;
 
+	const FTaskRecord* ResolveTask(FTaskId TaskId) const;
+
 	const FInventoryRecord* ResolveInventory(FInventoryId InventoryId) const;
 
 	FPersonRecord* ResolvePersonMutable(FPersonId PersonId);
@@ -1019,6 +1048,8 @@ private:
 
 	bool ValidateTaskTypeRecords(FString& OutFailureDescription) const;
 
+	bool ValidateTaskRecords(FString& OutFailureDescription) const;
+
 	bool ValidatePersonCapabilityRecords(FString& OutFailureDescription) const;
 
 	bool ValidateInventoryRecords(FString& OutFailureDescription) const;
@@ -1042,6 +1073,8 @@ private:
 	TArray<FActivityTypeRecord> ActivityTypeRecords;
 
 	TArray<FTaskTypeRecord> TaskTypeRecords;
+
+	TArray<FTaskRecord> TaskRecords;
 
 	TArray<FPersonCapabilityRecord> PersonCapabilityRecords;
 

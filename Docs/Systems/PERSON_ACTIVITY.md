@@ -34,7 +34,7 @@ The simulation distinguishes:
 | Current Work | What work relationship or site is this person currently attached to? | 0.1E (`WORK_LABOR.md`) |
 | Presence | Where is this person physically? | Not implemented |
 | Current Activity | What broad kind of behavior is currently recorded? | 0.1J (this document) |
-| Task | What specific kind of objective exists? | Task Type identity only, 0.1K (`TASKS.md`) |
+| Task | What specific kind of objective exists, and which occurrences of it exist? | Task Type identity 0.1K, Task Instance identity 0.1L (`TASKS.md`) |
 | Current Task | What specifically is this person trying to accomplish? | Not implemented |
 | Participation | What simulation processes is this person contributing to? | Not implemented |
 | Capability | What broad transferable abilities has this person acquired? | 0.1G–0.1I (`PERSON_CAPABILITY.md`) |
@@ -71,8 +71,8 @@ using FActivityTypeId = TSimulationId<FActivityTypeIdTag>;
 It is the tenth mutually distinct family. `ToString` yields `ActivityType#3`. The compile-time distinctness proof includes it alongside the nine earlier families and is not weakened.
 
 0.1J added no `FTaskTypeId`, `FTaskId`, or `FOccupationId`. Prototype 0.1K later added
-`FTaskTypeId` as authored Task Type identity only (`TASKS.md`); `FTaskId` and
-`FOccupationId` still do not exist.
+`FTaskTypeId` and Prototype 0.1L added `FTaskId` (`TASKS.md`); `FOccupationId` still does
+not exist. Current Activity references neither task identifier.
 
 ### Activity Type identity: durable key, runtime handle
 
@@ -219,10 +219,15 @@ Task              specific objective (Shape roof beam)
 Capability        broad ability      (Carpentry)
 ```
 
-0.1J implements only the first layer. Prototype 0.1K added the authored Task Type half of the
-second layer and nothing more (`TASKS.md`): a Task Type is a definition, and Activity still
-neither names nor implies one. There is no CurrentTask, task instance, TaskTarget, duration,
-progress, priority, issuer, location, requirements, or participants.
+0.1J implements only the first layer. Prototypes 0.1K and 0.1L added the second layer's
+identity and nothing more (`TASKS.md`): authored Task Types, then Task Instances holding only
+their own identifier and their type.
+
+Task Instances now exist, but `FCurrentActivity` does not reference them, having an activity
+does not imply any task, and creating a task does not create, set, clear, or otherwise mutate
+anyone's CurrentActivity. Creating a `Shape Beam` task does not make anyone `Working`. The two
+remain independently authoritative. There is still no CurrentTask, participation, TaskTarget,
+lifecycle, duration, progress, priority, issuer, location, or requirements.
 
 There is no ActivityStartedAt, ActivityEndedAt, Duration, ElapsedTime, PreviousActivity, ActivityHistory, ActivitySchedule, NextActivity, PlannedActivity, ActivityQueue, ActivityPriority, or ActivityReason. 0.1J has no clock-driven transition system and no automatic transitions.
 
@@ -248,7 +253,7 @@ Rejected operations leave authoritative state unchanged. Invalid or duplicate Ac
 
 Not implemented, and not scaffolded:
 
-- Task identity, CurrentTask, assignment, progress, targets, requirements, or participants; Task Type identity arrived separately in 0.1K (`TASKS.md`) and is not referenced by Current Activity
+- Task identity, CurrentTask, assignment, progress, targets, requirements, or participants; Task Type identity arrived separately in 0.1K and Task Instance identity in 0.1L (`TASKS.md`), and Current Activity references neither
 - Participation, production, or practice generation
 - Automatic capability acquisition or automatic Activity selection
 - AI behavior, schedules, daily routines, timers, duration, Activity history, or Activity events
