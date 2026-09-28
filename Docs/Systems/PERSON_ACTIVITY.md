@@ -36,7 +36,7 @@ The simulation distinguishes:
 | Current Activity | What broad kind of behavior is currently recorded? | 0.1J (this document) |
 | Task | What specific kind of objective exists, and which occurrences of it exist? | Task Type identity 0.1K, Task Instance identity 0.1L (`TASKS.md`) |
 | Current Task | What specifically is this person trying to accomplish? | Not implemented |
-| Participation | What simulation processes is this person contributing to? | Not implemented |
+| Participation | Does the simulation recognize this person as a participant in a particular task? | 0.1M (`TASKS.md`) |
 | Capability | What broad transferable abilities has this person acquired? | 0.1G–0.1I (`PERSON_CAPABILITY.md`) |
 | Practice | What meaningful developmental participation has accumulated? | 0.1H (`PERSON_CAPABILITY.md`) |
 
@@ -226,8 +226,13 @@ their own identifier and their type.
 Task Instances now exist, but `FCurrentActivity` does not reference them, having an activity
 does not imply any task, and creating a task does not create, set, clear, or otherwise mutate
 anyone's CurrentActivity. Creating a `Shape Beam` task does not make anyone `Working`. The two
-remain independently authoritative. There is still no CurrentTask, participation, TaskTarget,
-lifecycle, duration, progress, priority, issuer, location, or requirements.
+remain independently authoritative.
+
+Person–Task Participation now exists (`TASKS.md`). It neither determines nor mutates
+CurrentActivity. A participation relationship may persist while CurrentActivity changes
+independently, and adding participation does not set, clear, or read CurrentActivity.
+There is still no CurrentTask, TaskTarget, lifecycle, duration, progress, priority, issuer,
+location, or requirements.
 
 There is no ActivityStartedAt, ActivityEndedAt, Duration, ElapsedTime, PreviousActivity, ActivityHistory, ActivitySchedule, NextActivity, PlannedActivity, ActivityQueue, ActivityPriority, or ActivityReason. 0.1J has no clock-driven transition system and no automatic transitions.
 
@@ -253,8 +258,8 @@ Rejected operations leave authoritative state unchanged. Invalid or duplicate Ac
 
 Not implemented, and not scaffolded:
 
-- Task identity, CurrentTask, assignment, progress, targets, requirements, or participants; Task Type identity arrived separately in 0.1K and Task Instance identity in 0.1L (`TASKS.md`), and Current Activity references neither
-- Participation, production, or practice generation
+- Task identity, CurrentTask, assignment, progress, targets, requirements, or participants; Task Type identity arrived separately in 0.1K, Task Instance identity in 0.1L, and Person–Task Participation in 0.1M (`TASKS.md`). Current Activity references none of them and is not mutated by participation
+- production or practice generation
 - Automatic capability acquisition or automatic Activity selection
 - AI behavior, schedules, daily routines, timers, duration, Activity history, or Activity events
 - Movement, Presence, location, pathfinding, or Actor state

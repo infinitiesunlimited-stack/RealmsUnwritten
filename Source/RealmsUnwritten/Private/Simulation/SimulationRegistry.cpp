@@ -77,6 +77,22 @@ namespace
 		return INDEX_NONE;
 	}
 
+	/** Slot of a recorded (Person, Task) pair, or INDEX_NONE when none is recorded. */
+	int32 FindPersonTaskParticipationIndex(
+		const TArray<FPersonTaskParticipationRecord>& Records, FPersonId PersonId, FTaskId TaskId)
+	{
+		for (int32 RecordIndex = 0; RecordIndex < Records.Num(); ++RecordIndex)
+		{
+			const FPersonTaskParticipationRecord& Record = Records[RecordIndex];
+			if (Record.PersonId == PersonId && Record.TaskId == TaskId)
+			{
+				return RecordIndex;
+			}
+		}
+
+		return INDEX_NONE;
+	}
+
 	/**
 	 * 10,000^2. The locked interpretation is floor(sqrt(floor((this * P) / (P + 4000)))).
 	 *
@@ -1127,6 +1143,38 @@ TOptional<uint32> FSimulationRegistry::GetPersonGeneralCapability(
 	return DeriveGeneralCapability(PersonCapabilityRecords[RecordIndex].AccumulatedPractice);
 }
 
+EPersonTaskParticipationResult FSimulationRegistry::AddPersonTaskParticipation(
+	FPersonId PersonId, FTaskId TaskId)
+{
+	// All validation precedes any append so a rejected pair leaves storage unchanged.
+	if (!ContainsPerson(PersonId))
+	{
+		return EPersonTaskParticipationResult::UnknownPerson;
+	}
+
+	if (!ContainsTask(TaskId))
+	{
+		return EPersonTaskParticipationResult::UnknownTask;
+	}
+
+	if (FindPersonTaskParticipationIndex(PersonTaskParticipationRecords, PersonId, TaskId) != INDEX_NONE)
+	{
+		return EPersonTaskParticipationResult::AlreadyParticipating;
+	}
+
+	const int32 RecordIndex = PersonTaskParticipationRecords.AddDefaulted();
+	FPersonTaskParticipationRecord& ParticipationRecord = PersonTaskParticipationRecords[RecordIndex];
+	ParticipationRecord.PersonId = PersonId;
+	ParticipationRecord.TaskId = TaskId;
+
+	return EPersonTaskParticipationResult::Success;
+}
+
+bool FSimulationRegistry::HasPersonTaskParticipation(FPersonId PersonId, FTaskId TaskId) const
+{
+	return FindPersonTaskParticipationIndex(PersonTaskParticipationRecords, PersonId, TaskId) != INDEX_NONE;
+}
+
 void FSimulationRegistry::ApplyGoodsAddition(
 	FInventoryRecord& InventoryRecord, FGoodTypeId GoodTypeId, int32 Quantity)
 {
@@ -1363,6 +1411,7 @@ bool FSimulationRegistry::ValidateInvariants(FString& OutFailureDescription) con
 		&& ValidateTaskTypeRecords(OutFailureDescription)
 		&& ValidateTaskRecords(OutFailureDescription)
 		&& ValidatePersonCapabilityRecords(OutFailureDescription)
+		&& ValidatePersonTaskParticipationRecords(OutFailureDescription)
 		&& ValidateInventoryRecords(OutFailureDescription);
 }
 
@@ -2071,6 +2120,50 @@ bool FSimulationRegistry::ValidatePersonCapabilityRecords(FString& OutFailureDes
 					RecordIndex,
 					*CapabilityRecord.PersonId.ToString(),
 					*CapabilityRecord.SkillTypeId.ToString());
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+bool FSimulationRegistry::ValidatePersonTaskParticipationRecords(FString& OutFailureDescription) const
+{
+	for (int32 RecordIndex = 0; RecordIndex < PersonTaskParticipationRecords.Num(); ++RecordIndex)
+	{
+		const FPersonTaskParticipationRecord& ParticipationRecord =
+			PersonTaskParticipationRecords[RecordIndex];
+
+		if (!ContainsPerson(ParticipationRecord.PersonId))
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Person-task participation slot %d names unresolvable person %s."),
+				RecordIndex, *ParticipationRecord.PersonId.ToString());
+			return false;
+		}
+
+		if (!ContainsTask(ParticipationRecord.TaskId))
+		{
+			OutFailureDescription = FString::Printf(
+				TEXT("Person-task participation slot %d names unresolvable task %s."),
+				RecordIndex, *ParticipationRecord.TaskId.ToString());
+			return false;
+		}
+
+		for (int32 EarlierIndex = 0; EarlierIndex < RecordIndex; ++EarlierIndex)
+		{
+			const FPersonTaskParticipationRecord& EarlierRecord =
+				PersonTaskParticipationRecords[EarlierIndex];
+			if (EarlierRecord.PersonId == ParticipationRecord.PersonId
+				&& EarlierRecord.TaskId == ParticipationRecord.TaskId)
+			{
+				OutFailureDescription = FString::Printf(
+					TEXT("Person-task participation slots %d and %d share person %s and task %s."),
+					EarlierIndex,
+					RecordIndex,
+					*ParticipationRecord.PersonId.ToString(),
+					*ParticipationRecord.TaskId.ToString());
 				return false;
 			}
 		}

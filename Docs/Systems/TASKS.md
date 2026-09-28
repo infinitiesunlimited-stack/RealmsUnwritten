@@ -2,10 +2,10 @@
 
 ## Document status
 
-- **Role:** Implementation record for Prototypes 0.1K and 0.1L
+- **Role:** Implementation record for Prototypes 0.1K, 0.1L, and 0.1M
 - **Authority:** Subordinate to `DESIGN_CONSTITUTION.md`, `HIGH_LEVEL_ARCHITECTURE.md`, `DATA_MODEL_OVERVIEW.md`, and `PROTOTYPE_0_1_SCOPE.md`
-- **Extends:** The authored-definition identity pattern established by Good Type, Work Type, Skill Type, and Activity Type
-- **Scope:** Task Type identity (0.1K) and Task Instance identity (0.1L)
+- **Extends:** The authored-definition identity pattern established by Good Type, Work Type, Skill Type, and Activity Type, and the sparse pair-relationship pattern established by Person Capability
+- **Scope:** Task Type identity (0.1K), Task Instance identity (0.1L), and Person–Task Participation (0.1M)
 - **Describes:** Only what exists in the repository today
 
 ## The two questions
@@ -210,10 +210,99 @@ Retention and archival should be revisited after 0.1N, and before high-volume ex
 
 `CreateTask` is a low-level authority primitive. It records an objective only after some future simulation or domain system has already decided that objective should exist. An AI thought such as "I should fetch water" is not automatically authoritative Task state, and `FTaskRecord` must not become AI planner scratch space.
 
+## Person–Task Participation
+
+Prototype 0.1M records that the simulation recognizes a Person as a participant in one particular Task.
+
+It records relationship membership only. It does **not** assert that the Person is currently executing the Task, is physically present, was assigned or ordered to perform it, has performed any work, has contributed successfully, possesses any relevant capability, has generated Practice, has advanced Task progress, or has completed anything.
+
+"Participant" is the intended term. Contributor, assigned person, committed person, and worker all imply semantics that this relationship does not carry.
+
+### Record
+
+`FPersonTaskParticipationRecord` contains exactly:
+
+```text
+PersonId  FPersonId  must resolve
+TaskId    FTaskId    must resolve
+```
+
+There is no participation identity family. The pair `(PersonId, TaskId)` is the identity of the relationship, following the Person Capability pattern. Nothing in 0.1M needs to reference a participation record independently.
+
+Do not read any other field into this record. There is no status, role, assignment, owner, issuer, timestamp, duration, effort, contribution, progress, location, capability, Practice, CurrentTask, lifecycle, or history state.
+
+### Uniqueness and cardinality
+
+The pair is unique. A Person may have at most one authoritative participation relationship with a particular Task. Duplicate addition of the same pair is rejected as `AlreadyParticipating`. Temporary absence, interruption, eating, sleeping, travel, or later execution does not create a second record. Participation episodes are not implemented.
+
+The relationship is many-to-many. One Task may have zero, one, or many participating Persons. One Person may participate in zero, one, or many Tasks. Participation does not indicate which Task currently has a Person's attention; that belongs to future 0.1N CurrentTask.
+
+### Registry authority
+
+`FSimulationRegistry` exclusively owns participation storage in a private sparse `TArray<FPersonTaskParticipationRecord>` and provides:
+
+- `AddPersonTaskParticipation` → `EPersonTaskParticipationResult`
+- `HasPersonTaskParticipation`
+- `GetPersonTaskParticipationCount`
+
+with a private linear pair lookup used for duplicate detection, `HasPersonTaskParticipation`, and invariant validation. Array order has no semantic meaning. There is no reverse index, no map or set, no `FindTasksForPerson`, no `FindParticipantsForTask`, no snapshot-returning relationship API, and no participant array on `FTaskRecord` or Task array on `FPersonRecord`.
+
+Linear lookup is O(R) and duplicate invariant validation is potentially O(R²). That is acceptable at current prototype scale.
+
+### Add semantics
+
+`AddPersonTaskParticipation` takes a Person and a Task and proceeds in this order:
+
+1. resolve the Person; if unresolved, return `UnknownPerson`;
+2. resolve the Task; if unresolved, return `UnknownTask`;
+3. if the pair already exists, return `AlreadyParticipating`;
+4. otherwise append exactly one relationship record and return `Success`.
+
+All validation occurs before mutation. If both Person and Task are invalid, `UnknownPerson` wins. Default, one-past-range, and extreme identifiers are rejected safely. A rejected call appends nothing and mutates nothing unrelated.
+
+There is no `RemovePersonTaskParticipation`, no Active/Inactive/Ended flag, and no episode. Add-only storage is a **prototype limitation**, not a claim that participation is eternal. Ending, return after leaving, Task completion, interaction with future CurrentTask, and historical preservation are intentionally unresolved. Do not answer them in this slice.
+
+### What the recorded relationship means
+
+While the record exists, it is current authoritative registry truth that the simulation recognizes this Person as a participant in this Task.
+
+It is not proof that the Person ever executed the Task, contributed, or succeeded. It is not a work-history record, an execution log, a participation episode, or permanent historical evidence. Historical evidence must eventually be modeled separately.
+
+"Recognized by the simulation" means simulation truth only. It does not mean every NPC knows it, the Person knows the registry says it, the player knows it, an institution recorded it, or it is socially or officially accepted. Knowledge, rumors, visibility, and information propagation are not implemented.
+
+### Separations
+
+- **Assignment != Participation.** A Person may be assigned but not yet participate, may participate with no assignment, may join spontaneously, or may participate under coercion. Participation does not encode why the relationship exists. No offer, order, obligation, or schedule is stored.
+- **Participation != CurrentTask.** 0.1N remains future. `FPersonRecord` is unchanged. Future CurrentTask may possibly require an existing participation relationship; that rule is neither locked nor implemented here.
+- **Participation != CurrentActivity.** Adding participation neither reads, sets, clears, nor changes CurrentActivity. A Person may participate in Raise Timber Frame while independently Working, Eating, Traveling, Resting, or unrecorded.
+- **Participation != CurrentWork.** Adding participation neither requires, sets, clears, nor alters CurrentWork. Feed Child requires no economic work relationship. Repair Bridge does not automatically assign employment.
+- **Participation != Presence.** Adding participation does not move the Person, require a site, property, settlement, coordinates, or proximity, imply arrival, or create a presence record. The repository has no authoritative Person presence system.
+- **Participation != execution or success.** Membership is not beginning, attempting, performing meaningful work, advancing the Task, physically interacting, contributing usefully, or succeeding.
+- **Participation != Capability.** Adding participation neither requires nor grants Skill Type, Person Capability, or General Capability, and does not validate competence. William with Carpentry and Thomas without Carpentry may both participate in a Shape Beam Task. That apprenticeship case is required, not optional.
+- **Participation != Practice.** Adding participation does not call `AddPersonCapabilityPractice`, create Practice, increment Practice, or imply meaningful hands-on experience. Future execution and learning orchestration may eventually decide that meaningful hands-on execution occurred, then acquire a missing capability, then add Practice. Registered participation alone does none of that.
+- **Participation != Task progress or lifecycle.** 0.1L has no Task progress or lifecycle, and 0.1M introduces neither. Adding participation does not mutate the Task, complete it, or add contribution amount.
+
+No participation roles, hours, effort, contribution percentage, quality, owner, issuer, requester, beneficiary, or responsible Person belong here.
+
+### LOD compatibility
+
+Participation is plain registry-owned simulation state with no dependency on Actors, Components, animation, navigation, pathfinding, behavior trees, executor objects, loaded maps, per-frame ticks, or presentation. William may participate in Build House after the settlement becomes distant and detailed execution disappears. That structural independence is all 0.1M claims: LOD itself is not implemented.
+
+### Invariants
+
+Exactly three, checked for every stored participation as part of the `ValidateInvariants` chain:
+
+1. `PersonId` resolves to an authoritative Person;
+2. `TaskId` resolves to an authoritative Task;
+3. no earlier record contains the same `(PersonId, TaskId)` pair.
+
+No invariant requires CurrentWork, CurrentActivity, presence, location, capability, Practice, living/deceased state, Task lifecycle, Task status, Task target, Task context, or any mapping from Task Type to Skill, Activity, or Work. Validation diagnoses corruption and never repairs it. Failure descriptions are non-empty. Test-only corruption access remains the existing `WITH_DEV_AUTOMATION_TESTS`-guarded `FSimulationRegistryTestAccess`.
+
 ## Concept boundaries
 
 - **Task Type:** what specific kind of objective exists. Implemented here.
 - **Task Instance:** one actual occurrence of that objective. Implemented in 0.1L as identity only.
+- **Participation:** the simulation recognizes a Person as a participant in one Task. Implemented in 0.1M as membership only.
 - **Activity:** what broad behavior a person is currently doing (`PERSON_ACTIVITY.md`). A task is not an activity.
 - **CurrentWork:** what work attachment a person presently has (`WORK_LABOR.md`). A task is not a work commitment.
 - **Capability:** what broad transferable ability a person acquired (`PERSON_CAPABILITY.md`). A task is not a capability, and defining one grants none.
@@ -224,10 +313,10 @@ Retention and archival should be revisited after 0.1N, and before high-volume ex
 The established separation remains:
 
 ```text
-Knowledge != Capability != Occupation != Current Work != Presence != Activity != Task
+Knowledge != Capability != Occupation != Current Work != Presence != Activity != Task != Participation != CurrentTask
 ```
 
-Neither 0.1K nor 0.1L connects these. There is no mapping between Task Type and Work Type, Activity Type, or Skill Type, and creating a Task changes no Person, Household, Settlement, Property, Residence, Goods, Inventory, Physical Site, Inventory Location, CurrentWork, Work Type, Activity Type, CurrentActivity, Skill Type, Person Capability, Accumulated Practice, or derived General Capability state. Creating `Shape Beam` does not set `CurrentActivity = Working`; creating `Feed Child` does not set `CurrentActivity = Caring` and does not alter anyone's work attachment. Those orchestrations may later be performed externally, and each of those systems remains independently authoritative.
+Neither 0.1K, 0.1L, nor 0.1M connects these. There is no mapping between Task Type and Work Type, Activity Type, or Skill Type. Creating a Task changes no Person, Household, Settlement, Property, Residence, Goods, Inventory, Physical Site, Inventory Location, CurrentWork, Work Type, Activity Type, CurrentActivity, Skill Type, Person Capability, Accumulated Practice, or derived General Capability state. Adding participation changes none of those either, and does not mutate the Task. Creating `Shape Beam` does not set `CurrentActivity = Working`; recording that William participates in it does not either. Those orchestrations may later be performed externally, and each of those systems remains independently authoritative.
 
 Task creation also implies no location, Physical Site, Property, Settlement, coordinates, or Person presence, requires no Skill Type or capability, grants no capability, adds no Accumulated Practice, queries no General Capability, and validates no proficiency. A task needs only a valid Task Type.
 
@@ -236,18 +325,18 @@ Task creation also implies no location, Physical Site, Property, Settlement, coo
 ```text
 0.1K  Task Type Identity          what kind of objective exists            implemented
 0.1L  Task Instance Identity      one actual occurrence of that objective  implemented
-0.1M  Person-Task Participation   who is recognized as contributing        future
+0.1M  Person-Task Participation   who is recognized as a participant       implemented
 0.1N  Person Current Task         the single task presently receiving attention  future
 ```
 
-0.1M and 0.1N are documented, not implemented. There is no `FPersonTaskRecord`, `TaskParticipants`, `Person.Tasks`, assignment, participant role, leader/helper distinction, or participation state, and Task existence implies no participation. There is no `Person.CurrentTask`, `SetPersonCurrentTask`, `ClearPersonCurrentTask`, or `GetPersonCurrentTask`.
+0.1N is documented, not implemented. There is no `Person.CurrentTask`, `SetPersonCurrentTask`, `ClearPersonCurrentTask`, or `GetPersonCurrentTask`.
 
 Conceptually:
 
 ```text
 Task Type:      Shape Beam
 Task Instance:  Shape roof beam #482
-Participation:  William and Joe are recognized contributors to that task
+Participation:  William and Joe are recognized participants in that task
 CurrentTask:    the singular task presently receiving a person's attention
 ```
 
@@ -275,11 +364,12 @@ Domain-specific records such as production batches, transfer orders, constructio
 
 ## Explicitly not implemented
 
-Through 0.1L, the Task system does not implement or scaffold:
+Through 0.1M, the Task system does not implement or scaffold:
 
 - lifecycle or outcome state of any kind: no `Created`, `Active`, `Paused`, `Blocked`, `Completed`, `Cancelled`, `Failed`, or `Abandoned`, no status enum, no `bCompleted`, and no completion API. Record existence is sufficient for 0.1L, and completion semantics are deliberately deferred;
-- deletion, retirement, archival, tombstones, generations, ID reuse, or garbage collection;
-- `CurrentTask` on `FPersonRecord`, person-task participation, assignment, availability, offers, queues, priorities, reservations, or scheduling;
+- deletion, retirement, archival, tombstones, generations, ID reuse, or garbage collection of Tasks;
+- participation removal, Active/Inactive/Ended flags, participation history, episodes, timestamps, duration, roles, leader/helper/supervisor flags, contribution amount, effort, hours, productivity, quality, or performance;
+- `CurrentTask` on `FPersonRecord`, assignment, availability, offers, queues, priorities, reservations, or scheduling;
 - parent/child tasks, hierarchy, decomposition, or generic Project, Process, Operation, or JobActivity identities;
 - targets of any kind: no `TaskTarget`, `ETaskTargetKind`, target union, generic entity reference, or Person, Property, Physical Site, item, or geographic target. Domain-owned context keyed by `FTaskId` is the safer provisional direction, and it is not scaffolded here;
 - issuer, owner, beneficiary, responsible system, participant roles, worker arrays, or leader/helper roles;
@@ -289,9 +379,9 @@ Through 0.1L, the Task system does not implement or scaffold:
 - CurrentActivity mutation, CurrentWork mutation, physical presence, or movement;
 - AI planning, AI executors, behavior trees, per-frame ticks, timers, Actors, Components, or Blueprint exposure;
 - hover or inspection UI;
-- `FindTasksByType`, `GetAllTasks`, reverse indexes, or a permanent authored task catalog.
+- `FindTasksByType`, `GetAllTasks`, `FindTasksForPerson`, `FindParticipantsForTask`, reverse indexes, or a permanent authored task catalog.
 
-`FPersonRecord`, `FCurrentWork`, `FCurrentActivity`, Activity Types, Skill Types, Work Types, Good Types, Physical Sites, goods, and inventories are unchanged by these slices.
+`FPersonRecord`, `FTaskRecord`, `FCurrentWork`, `FCurrentActivity`, Activity Types, Skill Types, Work Types, Good Types, Physical Sites, goods, and inventories are unchanged by these slices.
 
 ## Tests
 
@@ -313,4 +403,16 @@ Headless tests in `TaskInstanceTests.cpp`:
 | `Task.Independence` | With a Person, CurrentWork, CurrentActivity, Skill Type, capability, accumulated practice, and located goods established first, creating Tasks changes none of them. A regression boundary, not a dependency |
 | `Task.InvariantDetection` | Isolated corruption of a Task slot/ID mismatch, a default `TaskTypeId`, and a nonzero but never-allocated `TaskTypeId` are each detected with a non-empty description, having first confirmed the registry was valid |
 
-`FSimulationRegistryTestAccess` exposes `TaskTypeRecords` and `TaskRecords` for corruption proofs only. The public API cannot produce any of the corrupted states above.
+Headless tests in `PersonTaskParticipationTests.cpp`:
+
+| Test | Proves |
+|---|---|
+| `PersonTaskParticipation.Addition` | A Task Instance exists before any participation; count starts at zero and `Has` is false; a valid Person + valid Task returns `Success`; count becomes one and `Has` becomes true; Person and Task still resolve unchanged |
+| `PersonTaskParticipation.Cardinality` | Four distinct people participate in one Task at once; one Person participates in three Tasks at once; every pair is independently queryable through `HasPersonTaskParticipation` |
+| `PersonTaskParticipation.Rejection` | Duplicate pair returns `AlreadyParticipating`; default, one-past-range, and extreme Person IDs return `UnknownPerson`; equivalent Task IDs return `UnknownTask`; both invalid yields `UnknownPerson`; every rejection leaves count, the original pair, Person authority, and Task authority unchanged |
+| `PersonTaskParticipation.Independence` | A Person participates with no CurrentWork, no household, and no recorded CurrentActivity. Thomas has no Carpentry and still participates in a Shape Beam Task. Adding participation changes no CurrentWork, CurrentActivity, capability count, Practice, General Capability, Person record, or Task record. A regression boundary, not a dependency |
+| `PersonTaskParticipation.InvariantDetection` | Isolated corruption of an unresolvable PersonId, an unresolvable TaskId, and a duplicate pair are each detected with a non-empty description, having first confirmed the registry was valid |
+
+There is no `PersonTaskParticipation.SnapshotRegression` because no participation record snapshot API exists.
+
+`FSimulationRegistryTestAccess` exposes `TaskTypeRecords`, `TaskRecords`, and `PersonTaskParticipationRecords` for corruption proofs only. The public API cannot produce any of the corrupted states above.

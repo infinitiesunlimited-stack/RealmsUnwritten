@@ -86,8 +86,10 @@ that practice without storing it on the person or the relationship. Prototype 0.
 authored Activity Type identity and one optional `CurrentActivity` on the person
 (`PERSON_ACTIVITY.md`) without generating practice or implying a capability. Prototype 0.1K
 adds authored Task Type identity and Prototype 0.1L adds Task Instance identity
-(`TASKS.md`), neither of which links a task to a person. The remaining person-facing items
-above remain future data-model requirements.
+(`TASKS.md`), neither of which required a person. Prototype 0.1M records sparse
+Person–Task Participation as recognized membership only, without CurrentTask, lifecycle,
+or any mutation of capability or activity. The remaining person-facing items above remain
+future data-model requirements.
 
 ### Household
 
@@ -162,7 +164,7 @@ Prototype 0.1E implements only the exclusive person-side commitment: `Person.Cur
 
 Prototype 0.1J stores one optional `Person.CurrentActivity` naming an authored Activity Type. That is broad current behavior, not a task, and not CurrentWork. CurrentWork does not automatically produce Working, and Working does not require CurrentWork. See `PERSON_ACTIVITY.md`.
 
-Prototype 0.1K adds authored Task Type identity: what specific reusable kind of objective exists, such as Shape Beam or Harvest Wheat. Prototype 0.1L adds Task Instance identity: one particular occurrence of such an objective, holding only its own identifier and its Task Type. Participation, CurrentTask, and lifecycle/completion all remain future. See `TASKS.md`.
+Prototype 0.1K adds authored Task Type identity: what specific reusable kind of objective exists, such as Shape Beam or Harvest Wheat. Prototype 0.1L adds Task Instance identity: one particular occurrence of such an objective, holding only its own identifier and its Task Type. Prototype 0.1M records Person–Task Participation as recognized membership of a Person in a Task. CurrentTask, Task lifecycle/completion, and participation removal/history remain future. See `TASKS.md`.
 
 Recommended conceptual split:
 
@@ -171,7 +173,8 @@ Recommended conceptual split:
 - **Job Assignment / Commitment:** Link between a person and accepted work, including status and scheduled interval.
 - **Current Activity:** Broad recorded behavior such as Working, Sleeping, or Traveling (`PERSON_ACTIVITY.md`).
 - **Task Type:** An authored reusable kind of specific objective, such as Shape Beam (`TASKS.md`).
-- **Task Instance:** One actual occurrence of that objective, such as shaping roof beam #482. Identity implemented in 0.1L; it exists independently of any person, so it may exist before anyone accepts it. Lifecycle, completion, participation, and current-task selection are not implemented.
+- **Task Instance:** One actual occurrence of that objective, such as shaping roof beam #482. Identity implemented in 0.1L; it exists independently of any person, so it may exist before anyone accepts it. Lifecycle, completion, and current-task selection are not implemented.
+- **Person–Task Participation:** The simulation recognizes a Person as a participant in one Task (`TASKS.md`). Membership only; implemented in 0.1M. Assignment, CurrentTask, execution, capability, Practice, and participation removal/history are not implemented.
 
 Specific objectives belong to the Task concept. Work that executes as steps — travel, pickup, milling, delivery — is described as Task Instances, not as a separate generic objective hierarchy parallel to Task. Domain records such as production batches, transfer orders, construction state, and crop cycles still exist where they own real domain rules, but they are not generic objective hierarchies. See `TASKS.md`.
 

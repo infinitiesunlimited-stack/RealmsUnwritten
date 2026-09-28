@@ -11,6 +11,7 @@
 #include "Simulation/InventoryRecord.h"
 #include "Simulation/PersonCapabilityRecord.h"
 #include "Simulation/PersonRecord.h"
+#include "Simulation/PersonTaskParticipationRecord.h"
 #include "Simulation/PhysicalSiteRecord.h"
 #include "Simulation/PropertyRecord.h"
 #include "Simulation/SettlementRecord.h"
@@ -336,9 +337,31 @@ enum class EPersonActivityResult : uint8
 };
 
 /**
+ * Outcome of recording that the simulation recognizes a person as a participant in a task.
+ *
+ * This is relationship membership only: no CurrentTask change, no CurrentActivity change,
+ * no CurrentWork change, no presence, no capability, no Practice, and no implication that
+ * the person is executing, assigned, or contributing successfully.
+ */
+enum class EPersonTaskParticipationResult : uint8
+{
+	/** The (Person, Task) relationship was recorded. */
+	Success,
+
+	/** That pair was already recorded; no state changed. */
+	AlreadyParticipating,
+
+	/** The person identifier does not resolve to a record; no state changed. */
+	UnknownPerson,
+
+	/** The task identifier does not resolve to a record; no state changed. */
+	UnknownTask
+};
+
+/**
  * Authoritative owner of person, household, settlement, property, good type, inventory,
- * physical site, work type, skill type, activity type, task type, task, and
- * person-capability relationship records.
+ * physical site, work type, skill type, activity type, task type, task, person-capability,
+ * and person-task participation relationship records.
  *
  * The registry is plain C++: no UObject, no Actor, no tick, no loaded map, and no
  * Blueprint exposure. Anything that needs a record resolves it by stable identifier
@@ -356,7 +379,11 @@ enum class EPersonActivityResult : uint8
  * stored on the registry rather than on the person record, with no reverse skill-to-people
  * index. Accumulated practice lives on that relationship and increases only through
  * AddPersonCapabilityPractice. Derived general capability is a read-only interpretation of
- * that practice and is not stored. Callers therefore cannot edit a record directly, and cannot
+ * that practice and is not stored. Person-task participation is a separate sparse
+ * one-sided relationship collection keyed by (Person, Task), also stored on the registry
+ * rather than on either record, with no reverse task-to-people index. It records
+ * recognized membership only: not CurrentTask, assignment, presence, activity, work,
+ * capability, Practice, or execution. Callers therefore cannot edit a record directly, and cannot
  * leave either side of a two-sided relationship disagreeing with the other.
  *
  * Inventory contents are one-sided rather than a relationship, so they are mutated through
@@ -695,6 +722,9 @@ public:
 	/** Number of recorded person-capability relationships. Derived from sparse storage. */
 	int32 GetPersonCapabilityCount() const { return PersonCapabilityRecords.Num(); }
 
+	/** Number of recorded person-task participation relationships. Derived from sparse storage. */
+	int32 GetPersonTaskParticipationCount() const { return PersonTaskParticipationRecords.Num(); }
+
 	/** Number of inventory records held. Derived from storage. */
 	int32 GetInventoryCount() const { return InventoryRecords.Num(); }
 
@@ -855,6 +885,24 @@ public:
 	 * The returned value is a copy and cannot mutate registry storage.
 	 */
 	TOptional<uint32> GetPersonGeneralCapability(FPersonId PersonId, FSkillTypeId SkillTypeId) const;
+
+	/**
+	 * Records that the simulation recognizes this person as a participant in this task.
+	 *
+	 * The pair is unique. Duplicate pairs, unknown people, and unknown tasks are rejected
+	 * with no mutation. This does not assign CurrentTask, set CurrentActivity or CurrentWork,
+	 * imply presence, grant a capability, generate Practice, advance the task, or create
+	 * missing people or tasks.
+	 */
+	EPersonTaskParticipationResult AddPersonTaskParticipation(FPersonId PersonId, FTaskId TaskId);
+
+	/**
+	 * Whether a person-task participation relationship is currently recorded for this pair.
+	 *
+	 * Absence means only that no such recognition is recorded, not that the person is
+	 * unable to take part. Unknown identifiers likewise report no recorded relationship.
+	 */
+	bool HasPersonTaskParticipation(FPersonId PersonId, FTaskId TaskId) const;
 
 	/**
 	 * Creates a positive quantity of a good type inside an inventory, creating the entry if
@@ -1052,6 +1100,8 @@ private:
 
 	bool ValidatePersonCapabilityRecords(FString& OutFailureDescription) const;
 
+	bool ValidatePersonTaskParticipationRecords(FString& OutFailureDescription) const;
+
 	bool ValidateInventoryRecords(FString& OutFailureDescription) const;
 
 	TArray<FPersonRecord> PersonRecords;
@@ -1077,6 +1127,8 @@ private:
 	TArray<FTaskRecord> TaskRecords;
 
 	TArray<FPersonCapabilityRecord> PersonCapabilityRecords;
+
+	TArray<FPersonTaskParticipationRecord> PersonTaskParticipationRecords;
 
 	TArray<FInventoryRecord> InventoryRecords;
 

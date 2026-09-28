@@ -102,7 +102,7 @@ It is not automatically:
 - percentage mastery
 - occupation duration
 
-`1` Practice is conceptually calibrated as approximately one hour-equivalent of meaningful developmental participation. That is not necessarily one literal clock hour, and 0.1I does not generate practice. Prototype 0.1J records optional Current Activity (`PERSON_ACTIVITY.md`) without generating practice. Future participation and learning systems will determine how meaningful actions produce practice.
+`1` Practice is conceptually calibrated as approximately one hour-equivalent of meaningful developmental participation. That is not necessarily one literal clock hour, and 0.1I does not generate practice. Prototype 0.1J records optional Current Activity (`PERSON_ACTIVITY.md`) without generating practice. Registered Person–Task Participation (`TASKS.md`) also generates none. Future meaningful execution and learning orchestration will determine how meaningful hands-on actions produce practice. Observation or registration alone does not.
 
 Zero means no accumulated practice has yet been quantified by the practice-state system for this relationship. It does not mean the person has never encountered the capability, and it does not mean biological inability. The capability relationship itself still means the broad capability has been meaningfully acquired.
 
@@ -129,7 +129,7 @@ Test-only corruption access remains guarded by `WITH_DEV_AUTOMATION_TESTS` and e
 
 `AddPersonCapabilityPractice` is an authority primitive, not the learning system. It does not decide why practice was earned. It does not automatically create a missing capability relationship.
 
-The intended future acquisition path is that a higher-level Participation system will create the relationship on first meaningful participation, then increment practice. Prototype 0.1J records optional Current Activity as broad behavior (`PERSON_ACTIVITY.md`) and does not create Person Capability relationships or generate Practice. Query operations do not create capabilities.
+The accepted learning principle remains that meaningful hands-on execution may eventually acquire a capability if absent, then add Practice. Registered Person–Task Participation (0.1M, `TASKS.md`) is membership only: it grants no capability, generates no Practice, and proves no execution. Observation or registration alone does not. Prototype 0.1J records optional Current Activity as broad behavior (`PERSON_ACTIVITY.md`) and does not create Person Capability relationships or generate Practice. Query operations do not create capabilities.
 
 There is no `RemovePersonCapability` and no decrement of practice.
 
@@ -231,7 +231,7 @@ Prototype 0.1G–0.1I do not implement or scaffold:
 - apprenticeship, guilds, credentials, certification, teachers, education, schools, universities, or monasteries as training systems
 - Knowledge Types, books, literacy, technology transfer, innovation, or knowledge graphs
 - automatic capability acquisition from age, work, household, observation, employment, or tasks
-- Participation, even though first meaningful participation remains the intended future acquisition trigger; 0.1J Current Activity does not generate practice
+- registered Person–Task Participation (`TASKS.md`); 0.1M membership grants no capability and generates no Practice. Meaningful hands-on execution remains the intended future acquisition trigger, and 0.1J Current Activity does not generate practice
 - `GetPeopleWithSkill` or any reverse Skill Type → Persons index
 - capability removal, history, archival state, or status enums
 - a public `SetPractice` production API
